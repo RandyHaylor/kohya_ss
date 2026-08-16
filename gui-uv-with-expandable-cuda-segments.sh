@@ -11,6 +11,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Keep the sd-scripts submodule on our Anima branch so runs use our code (CFG blend, ER-SDE, etc.).
+# Run this launcher from the superproject's anima-cfg-ersde-tooling branch: that branch pins this
+# submodule commit, so gui-uv.sh's `git submodule update` checks out our code rather than upstream.
+git -C "$SCRIPT_DIR/sd-scripts" checkout anima-cfg-ersde-tooling
+
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 exec ./gui-uv.sh "$@"
