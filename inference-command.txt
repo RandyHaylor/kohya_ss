@@ -1,0 +1,58 @@
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_list \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000840.safetensors \
+    	1.0 \
+    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+
+
+
+
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+    
+    
+    
+    
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000200.safetensors \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    	1.0 \
+    
+    --lora_weight \
+        /path/a.safetensors \
+        /path2/b.safetensors \
+    --lora_multiplier \
+        1.0 \
+        1.0 \
+
+/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors
+/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000120.safetensors
+/media/aikenyon/WDRed16TB/models/loras/tg_p_anima/penis_and_transgender_woman_anima.safetensors
+/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000160.safetensors
+
+
+large penis, sex, blonde hair, breasts, ass, open mouth, nipples, pussy, testicles, ring, straddling, anus, jewelry, anal, erection, looking back, vaginal, medium breasts, girl on top, blue eyes, looking at viewer, solo focus, cowgirl position, long hair --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
+
+penis, sex, vaginal, blonde hair, nipples, pussy, breasts, testicles, piercing, spread legs, pubic hair, small breasts, female pubic hair, closed eyes, smile, navel, lying, jewelry, erection --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
