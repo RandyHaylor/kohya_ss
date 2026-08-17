@@ -1,19 +1,58 @@
 uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/sd/anima/anima_models/perfectrsbmixAnimaAIO_kappa.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_list \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+    --from_file prompts.txt \
+    --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+    --prompt_count 10 --prompt_count_skip_first 0 \
+    --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+  # from_file: per-line tokens in prompts.txt (--w --h --s --l/--g --fs --d --n) override these globals per line.
+  # Applicable: global gen params + --prompt_count/--prompt_count_skip_first. NOT --pre_prompt/--pre_prompt_neg
+  # (use per-line --n for negatives), NOT --from_folder_settings, NOT --images_per_prompt (image_embed only).
+
+
+
+
+models:
+
+    --dit  /media/aikenyon/WDRed16TB/sd/anima/anima_models/pearlySapphireThe_v10.safetensors \
+ 
+
+loras:
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	1 \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+	/media/aikenyon/WDRed16TB/sd/anima/anima_loras/janeportertarzan_BaseAnima_[janeportertarzan].safetensors \
+	1 \
+
+
+
+FROM FOLDER OF TXT CAPTION/TAG FILES:
+uv run sd-scripts/anima_minimal_inference.py \
     --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
     --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
     --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
     --lora_list \
-    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000840.safetensors \
-    	1.0 \
-    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	1 \
+    --from_folder "/media/aikenyon/WDRed16TB/datasets/pony-no-score-1-sample/cap" \
+    --pre_prompt "masterpiece, best quality, score_7," \
+    --pre_prompt_neg "worst quality, blurry" \
+    --from_folder_settings "--w 832 --h 1216 --s 50 --l 3.5 --fs 2.0 --d 42" \
+    --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+    --prompt_count 10 --prompt_count_skip_first 0 \
+    --save_path ./anima_out --output_type images \
     --sampler er_sde --scheduler beta57
+  # from_folder: --from_folder_settings tokens are appended to every caption and override the globals per file.
+  # Applicable: --pre_prompt, --pre_prompt_neg, --from_folder_settings, global gen params,
+  # --prompt_count/--prompt_count_skip_first. NOT --images_per_prompt (image_embed only).
 
-    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
-    	1.0 \
-
-
-
-
+FROM SINGLE TXT FILE OF PROMTS:
 uv run sd-scripts/anima_minimal_inference.py \
     --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
     --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
@@ -22,37 +61,150 @@ uv run sd-scripts/anima_minimal_inference.py \
     	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
     --lora_multiplier \
     	1.0 \
-    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --from_file prompts.txt \
+    --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+    --prompt_count 10 --prompt_count_skip_first 0 \
+    --save_path ./anima_out --output_type images \
     --sampler er_sde --scheduler beta57
+  # Same as the from_file example at the top, but showing the --lora_weight / --lora_multiplier form
+  # instead of --lora_list. Per-line tokens in prompts.txt (--w --h --s --l/--g --fs --d --n) override
+  # these globals per line. --images_per_prompt / --pre_prompt* / --from_folder_settings do NOT apply.
+
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - FULL SETTINGS:
+  Full settings mode (pulls prompts + Steps/CFG/Seed/Size/Sampler/Scheduler from each PNG's metadata;
+  sampler/scheduler are only applied when the metadata value maps to a script choice. The global
+  --image_size / --infer_steps / --guidance_scale / --flow_shift / --seed / --sampler / --scheduler
+  below are the FALLBACK defaults used per-image whenever the metadata is missing/unmapped for that
+  value, e.g. no Size or "Sampler: Euler a"):
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+      --from_image_embed /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+      --pre_prompt "masterpiece, best quality" \
+      --pre_prompt_neg "worst quality, blurry" \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+      --prompt_count 2 --prompt_count_skip_first 0 \
+      --images_per_prompt 2 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - PROMPTS ONLY
+  prompts_only mode (only positive/negative from PNGs; steps/guidance/seed/size/sampler/scheduler come
+  entirely from the global CLI defaults below), also showing ignore_negative_prompt, --images_per_prompt,
+  and --prompt_count. The global defaults are the equivalent of the --from_folder_settings string
+  "--w 832 --h 1216 --s 50 --l 3.5 --fs 2.0 --d 42" expressed as real top-level flags:
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+    	  /media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	  1 \
+    	  /media/aikenyon/WDRed16TB/models/loras/tg_p_anima/penis_and_transgender_woman_anima.safetensors \
+    	  1 \
+      --from_image_embed prompts_only ignore_negative_prompt /media/aikenyon/WDRed16TB/sd/source_content/prompt_source_2 \
+      --pre_prompt "masterpiece, best quality" \
+      --pre_prompt_neg "worst quality, blurry" \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+      --prompt_count 10 --prompt_count_skip_first 10 \
+      --images_per_prompt 1 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - COMPARISON PAIR (prompt-only vs all-settings):
+  prompt_only_and_all_settings mode renders TWO images per prompt at the SAME --seed (metadata seed is
+  ignored) so only the settings differ: one *_promptonly image (all settings from the CLI defaults) and
+  one *_allsettings image (Steps/CFG/Seed/Size/Sampler/Scheduler from the metadata). --images_per_prompt
+  N makes N such pairs, pair k at seed+k. --prompt_count_skip_first paginates (run 2, then next 2):
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+    	  /media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	  1 \
+    	  /media/aikenyon/WDRed16TB/models/loras/tg_p_anima/penis_and_transgender_woman_anima.safetensors \
+    	  1 \
+      --from_image_embed prompt_only_and_all_settings /media/aikenyon/WDRed16TB/sd/source_content/prompt_source_2 \
+      --pre_prompt "masterpiece, best quality" \
+      --pre_prompt_neg "worst quality, low quality" \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+      --prompt_count 4 --prompt_count_skip_first 4 \
+      --images_per_prompt 1 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+  Notes:
+  - --from_image_embed takes the folder; prefix it with the literal keywords prompts_only,
+    ignore_negative_prompt, and/or prompt_only_and_all_settings (any order) to switch modes.
+  - ignore_negative_prompt discards the metadata negative so it falls back to --pre_prompt_neg / blank.
+  - Global defaults (--image_size H W, --infer_steps, --guidance_scale, --flow_shift, --seed, --sampler,
+    --scheduler) are the prompt-only values AND the per-image fallbacks in full-settings mode.
+    --image_size is HEIGHT WIDTH. er_sde/beta57 are now the built-in defaults, so --sampler/--scheduler
+    are optional unless overriding.
+  - Sampler/Scheduler are pulled from metadata only when they map to a script choice (euler/er_sde,
+    default/beta57); A1111 values like "Euler a" or "Karras" don't map and fall back.
+  - --seed accepts -1 (or omit it) for a random seed.
+  - --images_per_prompt 4 -> 4 seed-incremented variations per prompt (seed, seed+1, ...).
+  - --prompt_count 10 caps to the first 10 USABLE prompts (PNGs with no positive prompt are skipped and
+    do not count). --prompt_count_skip_first 4 skips the first 4 usable prompts first, for pagination.
+    Both apply to --from_folder / --from_file / --from_image_embed.
+  - In full-settings mode a metadata value overrides the matching global default per-image; settings
+    mode needs BOTH Steps and CFG in the metadata, otherwise that image reverts to prompts-only.
+
     
     
-    
-    
-    --lora_weight \
-    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
-    --lora_multiplier \
-    	1.0 \
-    
-    --lora_weight \
-    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000200.safetensors \
-    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
-    --lora_multiplier \
-    	1.0 \
-    	1.0 \
-    
-    --lora_weight \
-        /path/a.safetensors \
-        /path2/b.safetensors \
-    --lora_multiplier \
-        1.0 \
-        1.0 \
+
+  LORA A/B TESTER (--lora_test_folder):
+    Sweep a folder of LoRAs against a fixed generation set so you can compare them apples-to-apples.
+    For EACH top-level .safetensors in the folder (subfolders ignored), the whole otherwise-configured
+    run is repeated with that one test LoRA added on top of your fixed --lora_list/--lora_weight LoRAs.
+    Works with every mode (--from_file / --from_folder / --from_image_embed / single --prompt), so total
+    images = (number of test LoRAs) x (images the run would produce otherwise).
+
+      --lora_test_folder <folder> [multiplier]     multiplier applies to each test LoRA (default 1.0)
+
+    Trigger words: if a "<loraname>.txt" sits next to a test LoRA, its text is injected into the prompt
+    AFTER your --pre_prompt and BEFORE the main prompt (i.e. it carries that LoRA's trigger keywords).
+    No .txt = no injection.
+
+    Each image's settings sidecar (.txt) additionally records "source_image:" and "test_lora:" so you can
+    always tell which LoRA (and at what multiplier) produced a given image.
+
+    Note: LoRAs are merged into the model at load time, so the models RELOAD once per test LoRA (not per
+    image). Incompatible with --interactive and --latent_path.
+
+    Example (test every LoRA in a folder at 0.9 against a PNG-metadata prompt set):
+    uv run sd-scripts/anima_minimal_inference.py \
+        --dit  .../anima-base-v1.0.safetensors \
+        --vae  .../qwen_image_vae.safetensors \
+        --text_encoder .../qwen_3_06b_base.safetensors \
+        --lora_list  .../div2k_anima_v1-step00000360.safetensors 1.0 \
+        --lora_test_folder /media/aikenyon/WDRed16TB/models/loras/_totest 0.9 \
+        --from_image_embed prompts_only /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+        --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+        --prompt_count 4 \
+        --save_path ./anima_out --output_type images \
+        --sampler er_sde --scheduler beta57
+
+
+
+realistic, photo (medium), real life, 
+
+/media/aikenyon/WDRed16TB/datasets/pony-no-score-1-sample/cap
+    --from_folder "/media/aikenyon/WDRed16TB/datasets/opal-skin/f94f1c8f-8618-4da1-acd6-87b3805c3a24_frames" \
+
 
 /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors
 /media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000120.safetensors
 /media/aikenyon/WDRed16TB/models/loras/tg_p_anima/penis_and_transgender_woman_anima.safetensors
 /media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000160.safetensors
 
-
-large penis, sex, blonde hair, breasts, ass, open mouth, nipples, pussy, testicles, ring, straddling, anus, jewelry, anal, erection, looking back, vaginal, medium breasts, girl on top, blue eyes, looking at viewer, solo focus, cowgirl position, long hair --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
-
-penis, sex, vaginal, blonde hair, nipples, pussy, breasts, testicles, piercing, spread legs, pubic hair, small breasts, female pubic hair, closed eyes, smile, navel, lying, jewelry, erection --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
