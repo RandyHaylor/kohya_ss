@@ -2,7 +2,7 @@ services:
   kohya-ss-gui:
     container_name: kohya-ss-gui
     image: ghcr.io/bmaltais/kohya-ss-gui:latest
-    user: 1000:0
+    user: root
     build:
       context: .
       args:
@@ -33,6 +33,8 @@ services:
       - ./.cache/nv:/home/1000/.nv
       - ./.cache/keras:/home/1000/.keras
       - ./.cache/config:/home/1000/.config # For backward compatibility
+      - /media/aikenyon/WDRed16TB/datasets:/media/aikenyon/WDRed16TB/datasets
+    working_dir: /app
     deploy:
       resources:
         reservations:

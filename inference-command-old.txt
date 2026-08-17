@@ -1,0 +1,140 @@
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_list \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+
+
+
+
+models:
+
+    --dit  /media/aikenyon/WDRed16TB/sd/anima/anima_models/pearlySapphireThe_v10.safetensors \
+ 
+
+loras:
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	1 \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+	/media/aikenyon/WDRed16TB/sd/anima/anima_loras/janeportertarzan_BaseAnima_[janeportertarzan].safetensors \
+	1 \
+	/media/aikenyon/WDRed16TB/sd/anima/anima_loras/Kn0tt1ng_[Kn0tt1ng,furry with non-furry,dog penis,vaginal].safetensors \
+	1 \
+
+
+FROM FOLDER OF TXT CAPTION/TAG FILES:
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_list \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	1 \
+    --from_folder "/media/aikenyon/WDRed16TB/datasets/pony-no-score-1-sample/cap" \
+    --pre_prompt "masterpiece, best quality, score_7," \
+    --from_folder_settings "--w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42" \
+    --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+
+FROM SINGLE TXT FILE OF PROMTS:
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+   
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - FULL SETTINGS: 
+  Full settings mode (pulls prompts + Steps/CFG/Seed from each PNG's metadata):
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+      --from_image_embed /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - PROMPTS ONLY
+  prompts_only mode (only positive/negative from PNGs; steps/guidance/seed/size come from CLI), plus --images_per_prompt and a
+  couple of the new options:
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+      --from_image_embed prompts_only /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+      --pre_prompt "masterpiece, best quality" \
+      --pre_prompt_neg "worst quality, blurry" \
+      --images_per_prompt 4 \
+      --seed -1 \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 \
+      --count 10 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+  Notes:
+  - --from_image_embed takes the folder; prefix it with the literal prompts_only to switch modes.
+  - --count 10 caps it to the first 10 PNGs (sorted by name).
+  - --images_per_prompt 4 → 4 seed-incremented variations per image.
+  - In prompts_only mode the --image_size/--infer_steps/--guidance_scale above are used; in full settings mode they're overridden
+  per-image when present in the PNG.
+
+    
+    
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000200.safetensors \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    	1.0 \
+    
+    --lora_weight \
+        /path/a.safetensors \
+        /path2/b.safetensors \
+    --lora_multiplier \
+        1.0 \
+        1.0 \
+
+
+
+realistic, photo (medium), real life, 
+
+/media/aikenyon/WDRed16TB/datasets/pony-no-score-1-sample/cap
+    --from_folder "/media/aikenyon/WDRed16TB/datasets/opal-skin/f94f1c8f-8618-4da1-acd6-87b3805c3a24_frames" \
+
+
+/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors
+/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000120.safetensors
+/media/aikenyon/WDRed16TB/models/loras/tg_p_anima/penis_and_transgender_woman_anima.safetensors
+/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000160.safetensors
+
+realistic, photo \(medium\),real life,masterpiece, best quality, score_7,cowgirl hetero sex, 1girl, 1boy, vaginal penetration, penis, ass, blonde hair, anus, sex, testicles, vaginal, girl on top, straddling, pussy, mole on ass, erection, male pubic hair, closed eyes, cowgirl position, lying, long hair, artist name, pubic hair --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
+
+cowgirl hetero sex, 1girl, 1boy, vaginal penetration, penis, ass, blonde hair, anus, sex, testicles, vaginal, girl on top, straddling, pussy, mole on ass, erection, male pubic hair, closed eyes, cowgirl position, lying, long hair, artist name, pubic hair
+masterpiece, score_7, cartoon, solo,mature female, red eyes, blue hair, long hair, twintails,asymmetrical wings, detached collar, thigh strap,puffy sleeves,  feathered wings,tail,large breasts, nude, uncensored, futanari, small penis, topless, barefoot, nipples,outdoors, forest,fireflies, ruins, dark, sitting spread wide leaning back on hands, actively masturbating, smug satisfaction, dynamic shot  --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
+
+large penis, sex, blonde hair, breasts, ass, open mouth, nipples, pussy, testicles, ring, straddling, anus, jewelry, anal, erection, looking back, vaginal, medium breasts, girl on top, blue eyes, looking at viewer, solo focus, cowgirl position, long hair --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
+
+penis, sex, vaginal, blonde hair, nipples, pussy, breasts, testicles, piercing, spread legs, pubic hair, small breasts, female pubic hair, closed eyes, smile, navel, lying, jewelry, erection --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
+
+realistic, photo \(medium\),real life,masterpiece, best quality, score_7,a woman sucks on a man's large penis, jewelry, oral, fellatio, underwear, black hair, earrings, ring, thighhighs, mole, breasts, panties, looking at viewer, necklace, long hair, male pubic hair, bracelet, erection, veins, solo focus, pubic hair, makeup,   --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42
+realistic, photo \(medium\),real life,masterpiece, best quality, score_7,cowgirl hetero sex, 1girl, 1boy, vaginal penetration, penis, ass, blonde hair, anus, sex, testicles, vaginal, girl on top, straddling, pussy, mole on ass, erection, male pubic hair, closed eyes, cowgirl position, lying, long hair, artist name, pubic hair --w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42 --seed 42

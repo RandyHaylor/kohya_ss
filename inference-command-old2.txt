@@ -1,0 +1,169 @@
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_list \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+
+
+
+
+models:
+
+    --dit  /media/aikenyon/WDRed16TB/sd/anima/anima_models/pearlySapphireThe_v10.safetensors \
+ 
+
+loras:
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	1 \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    	1.0 \
+	/media/aikenyon/WDRed16TB/sd/anima/anima_loras/janeportertarzan_BaseAnima_[janeportertarzan].safetensors \
+	1 \
+	/media/aikenyon/WDRed16TB/sd/anima/anima_loras/Kn0tt1ng_[Kn0tt1ng,furry with non-furry,dog penis,vaginal].safetensors \
+	1 \
+
+
+FROM FOLDER OF TXT CAPTION/TAG FILES:
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_list \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	1 \
+    --from_folder "/media/aikenyon/WDRed16TB/datasets/pony-no-score-1-sample/cap" \
+    --pre_prompt "masterpiece, best quality, score_7," \
+    --from_folder_settings "--w 832 --h 1216 --s 50 --l 3.5 --fs 1.0 --d 42" \
+    --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+
+FROM SINGLE TXT FILE OF PROMTS:
+uv run sd-scripts/anima_minimal_inference.py \
+    --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+    --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+    --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    --from_file prompts.txt --save_path ./anima_out --output_type images \
+    --sampler er_sde --scheduler beta57
+   
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - FULL SETTINGS:
+  Full settings mode (pulls prompts + Steps/CFG/Seed/Size/Sampler/Scheduler from each PNG's metadata;
+  sampler/scheduler are only applied when the metadata value maps to a script choice. The global
+  --image_size / --infer_steps / --guidance_scale / --flow_shift / --seed / --sampler / --scheduler
+  below are the FALLBACK defaults used per-image whenever the metadata is missing/unmapped for that
+  value, e.g. no Size or "Sampler: Euler a"):
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+      --from_image_embed /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+      --prompt_count 2 \
+      --images_per_prompt 2 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - PROMPTS ONLY
+  prompts_only mode (only positive/negative from PNGs; steps/guidance/seed/size/sampler/scheduler come
+  entirely from the global CLI defaults below), also showing ignore_negative_prompt, --images_per_prompt,
+  and --prompt_count. The global defaults are the equivalent of the --from_folder_settings string
+  "--w 832 --h 1216 --s 50 --l 3.5 --fs 2.0 --d 42" expressed as real top-level flags:
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+    	  /media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00002040.safetensors \
+    	  1 \
+      --from_image_embed prompts_only ignore_negative_prompt /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+      --pre_prompt "masterpiece, best quality" \
+      --pre_prompt_neg "worst quality, blurry" \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+      --prompt_count 10 \
+      --images_per_prompt 1 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+FROM FOLDER OF PNG FILES - TAKING FROM METADATA - COMPARISON PAIR (prompt-only vs all-settings):
+  prompt_only_and_all_settings mode renders TWO images per prompt at the SAME --seed (metadata seed is
+  ignored) so only the settings differ: one *_promptonly image (all settings from the CLI defaults) and
+  one *_allsettings image (Steps/CFG/Seed/Size/Sampler/Scheduler from the metadata). --images_per_prompt
+  N makes N such pairs, pair k at seed+k. --prompt_count_skip_first paginates (run 2, then next 2):
+  uv run sd-scripts/anima_minimal_inference.py \
+      --dit  /media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors \
+      --vae  /media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors \
+      --text_encoder /media/aikenyon/WDRed16TB/models/anima/split_files/text_encoders/qwen_3_06b_base.safetensors \
+      --lora_list \
+          /media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+          1.0 \
+      --from_image_embed prompt_only_and_all_settings /media/aikenyon/WDRed16TB/sd/source_content/prompt_source \
+      --image_size 1216 832 --infer_steps 50 --guidance_scale 3.5 --flow_shift 2.0 --seed 42 \
+      --prompt_count 2 --prompt_count_skip_first 0 \
+      --images_per_prompt 1 \
+      --save_path ./anima_out --output_type images \
+      --sampler er_sde --scheduler beta57
+
+  Notes:
+  - --from_image_embed takes the folder; prefix it with the literal keywords prompts_only,
+    ignore_negative_prompt, and/or prompt_only_and_all_settings (any order) to switch modes.
+  - ignore_negative_prompt discards the metadata negative so it falls back to --pre_prompt_neg / blank.
+  - Global defaults (--image_size H W, --infer_steps, --guidance_scale, --flow_shift, --seed, --sampler,
+    --scheduler) are the prompt-only values AND the per-image fallbacks in full-settings mode.
+    --image_size is HEIGHT WIDTH. er_sde/beta57 are now the built-in defaults, so --sampler/--scheduler
+    are optional unless overriding.
+  - Sampler/Scheduler are pulled from metadata only when they map to a script choice (euler/er_sde,
+    default/beta57); A1111 values like "Euler a" or "Karras" don't map and fall back.
+  - --seed accepts -1 (or omit it) for a random seed.
+  - --images_per_prompt 4 -> 4 seed-incremented variations per prompt (seed, seed+1, ...).
+  - --prompt_count 10 caps to the first 10 USABLE prompts (PNGs with no positive prompt are skipped and
+    do not count). --prompt_count_skip_first 4 skips the first 4 usable prompts first, for pagination.
+    Both apply to --from_folder / --from_file / --from_image_embed.
+  - In full-settings mode a metadata value overrides the matching global default per-image; settings
+    mode needs BOTH Steps and CFG in the metadata, otherwise that image reverts to prompts-only.
+
+    
+    
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000440.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    
+    --lora_weight \
+    	/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000200.safetensors \
+    	/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors \
+    --lora_multiplier \
+    	1.0 \
+    	1.0 \
+    
+    --lora_weight \
+        /path/a.safetensors \
+        /path2/b.safetensors \
+    --lora_multiplier \
+        1.0 \
+        1.0 \
+
+
+
+realistic, photo (medium), real life, 
+
+/media/aikenyon/WDRed16TB/datasets/pony-no-score-1-sample/cap
+    --from_folder "/media/aikenyon/WDRed16TB/datasets/opal-skin/f94f1c8f-8618-4da1-acd6-87b3805c3a24_frames" \
+
+
+/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors
+/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000120.safetensors
+/media/aikenyon/WDRed16TB/models/loras/tg_p_anima/penis_and_transgender_woman_anima.safetensors
+/media/aikenyon/WDRed16TB/models/loras/nsfw_photo/NSFW_Photo_anima-step00000160.safetensors
+

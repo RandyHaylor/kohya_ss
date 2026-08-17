@@ -1,0 +1,39 @@
+● # Start containers (detached mode)                                                          
+  sudo docker compose up -d
+                                                                                                
+       http://127.0.0.1:7860
+       
+       
+  # Stop containers                                                                           
+  sudo docker compose down                                                                    
+                                                                                              
+  # View logs (follow in real-time)                                                           
+  sudo docker compose logs -f kohya-ss-gui                                                    
+                                                                                              
+  # Or view all container logs                                                                
+  sudo docker compose logs -f                                                                 
+                                                                                              
+  Other useful ones:                                                                          
+  # Restart containers                                                                        
+  sudo docker compose restart                                                                 
+                                                                                              
+  # Check status                                                                              
+  sudo docker compose ps                                                                      
+                                                                                              
+  # View logs without following                                                               
+  sudo docker compose logs kohya-ss-gui   
+  
+  
+  
+  # Delete locked files in running container:
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000001-state 
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000002-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000003-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000004-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000005-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000006-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000007-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000008-state             
+  sudo docker exec kohya-ss-gui rm -rf /app/outputs/illustriousphoto-000010-state
+  
+  ### DELETE ALL OUTPUT: sudo docker exec kohya-ss-gui bash -c 'rm -rf /app/outputs/*'
