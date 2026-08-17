@@ -1,4 +1,4 @@
 [submodule "sd-scripts"]
     path = sd-scripts
     url = https://github.com/RandyHaylor/sd-scripts.git
-    branch = anima-cfg-ersde-tooling
+    branch = main
