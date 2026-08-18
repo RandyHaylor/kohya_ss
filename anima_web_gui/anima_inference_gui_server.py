@@ -322,6 +322,10 @@ INDEX_HTML = """<!doctype html>
   button { padding: 6px 12px; cursor: pointer; }
   #status { margin-top: 12px; padding: 8px; background: #f4f4f4; border: 1px solid #ccc; }
   #logTail { white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 280px; overflow:auto; background:#111; color:#ddd; padding:8px; }
+  .copyPasteFieldWrapper { position: relative; box-sizing: border-box; }
+  .copyPasteControl { position: absolute; top: 3px; right: 2px; display: flex; flex-direction: column; gap: 1px; z-index: 3; }
+  .copyPasteButton { width: 12px; height: 12px; padding: 0; font-size: 9px; line-height: 12px; text-align: center; cursor: pointer; border: 1px solid #aaa; border-radius: 2px; background: rgba(255,255,255,0.85); color: #333; }
+  .copyPasteButton:hover { background: #fff; }
   #galleryPanel { margin-top: 12px; border: 1px solid #ccc; }
   #galleryHeader { cursor: pointer; padding: 6px 8px; background: #eee; font-weight: 600; user-select: none; }
   #galleryThumbs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; max-height: 340px; overflow: auto; }
@@ -437,6 +441,79 @@ function addLoraRow(path, strength, enabled) {
   row.appendChild(enabledCheckbox);
   row.appendChild(removeButton);
   container.appendChild(row);
+  attachCopyPasteButtonsToField(pathInput);
+  attachCopyPasteButtonsToField(strengthInput);
+}
+
+function copyFieldValueToClipboard(field) {
+  const text = field.value;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(function() { legacyCopyFieldSelection(field); });
+  } else {
+    legacyCopyFieldSelection(field);
+  }
+}
+
+function legacyCopyFieldSelection(field) {
+  field.focus();
+  field.select();
+  try { document.execCommand('copy'); } catch (e) { /* clipboard unavailable */ }
+}
+
+function pasteClipboardIntoField(field) {
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    navigator.clipboard.readText().then(function(text) {
+      field.value = text;
+      field.dispatchEvent(new Event('change'));
+    }).catch(function() { alert('Paste not permitted by the browser; click the field and press Ctrl+V.'); });
+  } else {
+    alert('Paste not supported by the browser; click the field and press Ctrl+V.');
+  }
+}
+
+// Overlay a stacked tiny copy(c)/paste(p) control at the right edge of a text field, preserving the
+// field's flex sizing by moving it onto the wrapper. Idempotent per field.
+function attachCopyPasteButtonsToField(field) {
+  if (field.dataset.copyPasteEnhanced === 'true') { return; }
+  field.dataset.copyPasteEnhanced = 'true';
+
+  const computedStyle = window.getComputedStyle(field);
+  const wrapper = document.createElement('span');
+  wrapper.className = 'copyPasteFieldWrapper';
+  wrapper.style.flexGrow = computedStyle.flexGrow;
+  wrapper.style.flexShrink = computedStyle.flexShrink;
+  wrapper.style.flexBasis = computedStyle.flexBasis;
+  wrapper.style.minWidth = computedStyle.minWidth;
+  wrapper.style.display = (computedStyle.display === 'block') ? 'block' : 'inline-block';
+  wrapper.style.width = (field.style.width === '100%' || computedStyle.width) ? '100%' : 'auto';
+
+  field.parentNode.insertBefore(wrapper, field);
+  wrapper.appendChild(field);
+  field.style.width = '100%';
+  field.style.boxSizing = 'border-box';
+  field.style.paddingRight = '17px';  // keep text clear of the overlaid buttons
+
+  const control = document.createElement('span');
+  control.className = 'copyPasteControl';
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'copyPasteButton';
+  copyButton.textContent = 'c';
+  copyButton.title = 'copy';
+  copyButton.onclick = function() { copyFieldValueToClipboard(field); };
+  const pasteButton = document.createElement('button');
+  pasteButton.type = 'button';
+  pasteButton.className = 'copyPasteButton';
+  pasteButton.textContent = 'p';
+  pasteButton.title = 'paste';
+  pasteButton.onclick = function() { pasteClipboardIntoField(field); };
+  control.appendChild(copyButton);
+  control.appendChild(pasteButton);
+  wrapper.appendChild(control);
+}
+
+function attachCopyPasteButtonsToAllTextFields() {
+  document.querySelectorAll('input[type=text], textarea').forEach(attachCopyPasteButtonsToField);
 }
 
 function collectLoras() {
@@ -742,6 +819,7 @@ fetch('/choices').then(function(r) { return r.json(); }).then(function(choices) 
 
 addLoraRow('/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors', '1');
 applyModeVisibility();
+attachCopyPasteButtonsToAllTextFields();
 
 setInterval(refreshStatus, 1500);
 setInterval(refreshGeneratedImages, 2500);
