@@ -50,6 +50,13 @@ def list_generated_png_files_in_directories(directories) -> list:
     return png_files
 
 
+def resolve_settings_sidecar_path_for_image(image_absolute_path: str) -> str:
+    """Return the '<base>.json' settings sidecar path that sits next to a generated image (the inference
+    script writes it alongside each PNG). Does not check existence."""
+    base_path_without_extension, _ = os.path.splitext(image_absolute_path)
+    return base_path_without_extension + ".json"
+
+
 def is_path_within_allowed_directories(candidate_absolute_path: str, allowed_directories) -> bool:
     """True only if candidate_absolute_path (symlinks resolved) sits strictly inside one of the
     allowed_directories (symlinks resolved). Guards the image-serving route against path traversal

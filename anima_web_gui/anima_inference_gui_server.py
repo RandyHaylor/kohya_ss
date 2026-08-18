@@ -30,6 +30,7 @@ from generated_image_gallery import (
     is_path_within_allowed_directories,
     list_generated_png_files_in_directories,
     resolve_save_directory_absolute_path,
+    resolve_settings_sidecar_path_for_image,
 )
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -217,6 +218,27 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_png_file(requested_absolute_path)
 
+    def _serve_image_settings_sidecar(self, query_string: str) -> None:
+        """Return the JSON settings sidecar for a generated image so the GUI can reload its settings.
+        404s when the image path is outside the known save dirs or has no sidecar."""
+        requested_image_path = (parse_qs(query_string).get("path") or [""])[0]
+        with server_state_lock:
+            allowed_directories = list(observed_save_directories)
+        if not requested_image_path or not is_path_within_allowed_directories(requested_image_path, allowed_directories):
+            self._send_json({"error": "not found"}, status_code=404)
+            return
+        sidecar_path = resolve_settings_sidecar_path_for_image(requested_image_path)
+        if not os.path.isfile(sidecar_path):
+            self._send_json({"error": "no settings sidecar for this image"}, status_code=404)
+            return
+        try:
+            with open(sidecar_path, "r", encoding="utf-8") as sidecar_file:
+                settings = json.load(sidecar_file)
+        except (OSError, json.JSONDecodeError) as error:
+            self._send_json({"error": f"could not read settings sidecar: {error}"}, status_code=500)
+            return
+        self._send_json({"settings": settings})
+
     def do_GET(self) -> None:
         parsed_request = urlparse(self.path)
         route = parsed_request.path
@@ -237,6 +259,8 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"images": list_gallery_images_newest_first()})
         elif route == "/image":
             self._serve_generated_image(parsed_request.query)
+        elif route == "/image_settings":
+            self._serve_image_settings_sidecar(parsed_request.query)
         else:
             self._send_json({"error": "not found"}, status_code=404)
 
@@ -301,13 +325,16 @@ INDEX_HTML = """<!doctype html>
   #galleryPanel { margin-top: 12px; border: 1px solid #ccc; }
   #galleryHeader { cursor: pointer; padding: 6px 8px; background: #eee; font-weight: 600; user-select: none; }
   #galleryThumbs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; max-height: 340px; overflow: auto; }
-  #galleryThumbs img { height: 110px; width: auto; cursor: pointer; border: 1px solid #ccc; background: #fafafa; }
+  .thumbnailWrapper { position: relative; display: inline-block; line-height: 0; }
+  .thumbnailWrapper img { height: 110px; width: auto; cursor: pointer; border: 1px solid #ccc; background: #fafafa; }
+  .loadSettingsButton { position: absolute; bottom: 3px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
   #galleryEmpty { color: #777; font-style: italic; }
   #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
   #lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; }
   .lightboxNavButton { position: absolute; bottom: 16px; font-size: 26px; line-height: 1; padding: 6px 18px; cursor: pointer; background: rgba(255,255,255,0.85); border: none; border-radius: 6px; }
   #lightboxPrevButton { left: 16px; }
   #lightboxNextButton { right: 16px; }
+  #lightboxLoadButton { position: absolute; bottom: 64px; right: 16px; font-size: 15px; padding: 6px 14px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -374,6 +401,7 @@ INDEX_HTML = """<!doctype html>
 <div id="lightbox" onclick="closeLightbox()">
   <button type="button" id="lightboxPrevButton" class="lightboxNavButton" title="previous image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(-1)">&lt;</button>
   <img id="lightboxImage" alt="generated image">
+  <button type="button" id="lightboxLoadButton" title="load this image's settings into the form" onclick="event.stopPropagation(); loadImageSettingsIntoForm(currentLightboxImagePath)">Load settings</button>
   <button type="button" id="lightboxNextButton" class="lightboxNavButton" title="next image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(1)">&gt;</button>
 </div>
 
@@ -598,6 +626,50 @@ function showLightboxImageRelativeToCurrent(offset) {
   openLightbox(orderedGalleryImagePathsNewestFirst[nextIndex]);
 }
 
+function setFieldValueIfPresent(elementId, value) {
+  if (value === undefined || value === null) { return; }
+  document.getElementById(elementId).value = value;
+}
+
+function applyLoadedGenerationSettingsToForm(settings) {
+  // These generated-image settings describe a single embedded-prompt render, so reproduce them in
+  // single-prompt mode with the exact height/width (preset selector back to custom).
+  document.getElementById('modeSelect').value = 'single';
+  applyModeVisibility();
+  document.getElementById('resolutionPreset').value = '';
+
+  setFieldValueIfPresent('positivePrompt', settings.prompt);
+  setFieldValueIfPresent('negativePrompt', settings.negative_prompt);
+  setFieldValueIfPresent('imageWidth', settings.width);
+  setFieldValueIfPresent('imageHeight', settings.height);
+  setFieldValueIfPresent('inferSteps', settings.steps);
+  setFieldValueIfPresent('guidanceScale', settings.guidance_scale);
+  setFieldValueIfPresent('flowShift', settings.flow_shift);
+  setFieldValueIfPresent('seed', settings.seed);
+  setFieldValueIfPresent('sampler', settings.sampler);
+  setFieldValueIfPresent('scheduler', settings.scheduler);
+  setFieldValueIfPresent('ditPath', settings.dit);
+  setFieldValueIfPresent('vaePath', settings.vae);
+  setFieldValueIfPresent('textEncoderPath', settings.text_encoder);
+
+  document.getElementById('loraList').innerHTML = '';
+  (settings.loras || []).forEach(function(lora) { addLoraRow(lora.path, String(lora.multiplier)); });
+}
+
+function loadImageSettingsIntoForm(imagePath) {
+  if (!imagePath) { return; }
+  fetch('/image_settings?path=' + encodeURIComponent(imagePath))
+    .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+    .then(function(response) {
+      if (!response.ok || !response.data.settings) {
+        alert((response.data && response.data.error) || 'No settings found for this image.');
+        return;
+      }
+      applyLoadedGenerationSettingsToForm(response.data.settings);
+    })
+    .catch(function(e) { alert('Failed to load settings: ' + e); });
+}
+
 function refreshGeneratedImages() {
   fetch('/generated_images').then(function(r) { return r.json(); }).then(function(data) {
     const images = data.images || [];  // newest-first from the server
@@ -612,11 +684,21 @@ function refreshGeneratedImages() {
       const image = images[i];
       if (renderedGalleryImagePaths.has(image.path)) { continue; }
       renderedGalleryImagePaths.add(image.path);
+      const thumbnailWrapper = document.createElement('div');
+      thumbnailWrapper.className = 'thumbnailWrapper';
       const thumbnail = document.createElement('img');
       thumbnail.src = imageUrlForPath(image.path);
       thumbnail.title = image.name;
       thumbnail.onclick = function() { openLightbox(image.path); };
-      thumbsContainer.insertBefore(thumbnail, thumbsContainer.firstChild);
+      const loadSettingsButton = document.createElement('button');
+      loadSettingsButton.type = 'button';
+      loadSettingsButton.className = 'loadSettingsButton';
+      loadSettingsButton.textContent = 'Load';
+      loadSettingsButton.title = "load this image's settings into the form";
+      loadSettingsButton.onclick = function(event) { event.stopPropagation(); loadImageSettingsIntoForm(image.path); };
+      thumbnailWrapper.appendChild(thumbnail);
+      thumbnailWrapper.appendChild(loadSettingsButton);
+      thumbsContainer.insertBefore(thumbnailWrapper, thumbsContainer.firstChild);
     }
   }).catch(function() {});
 }

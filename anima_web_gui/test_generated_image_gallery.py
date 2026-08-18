@@ -9,6 +9,7 @@ from generated_image_gallery import (
     is_path_within_allowed_directories,
     list_generated_png_files_in_directories,
     resolve_save_directory_absolute_path,
+    resolve_settings_sidecar_path_for_image,
 )
 
 
@@ -51,6 +52,11 @@ def test_missing_directory_is_skipped_and_duplicates_collapsed(tmp_path):
     )
 
     assert [entry["file_name"] for entry in listing] == ["image.png"]
+
+
+def test_settings_sidecar_path_swaps_png_extension_for_json():
+    sidecar_path = resolve_settings_sidecar_path_for_image("/out/20260818-150617-897_42.png")
+    assert sidecar_path == "/out/20260818-150617-897_42.json"
 
 
 def test_file_inside_allowed_directory_is_permitted(tmp_path):
