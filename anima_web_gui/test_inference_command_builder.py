@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -15,6 +16,16 @@ from inference_command_builder import (
     load_sampler_and_scheduler_choices,
     _parse_choice_tuple_from_source,
 )
+
+
+def collect_flag_values(argv, flag):
+    """Return the argv tokens after `flag`, up to (not including) the next '--' option token."""
+    values = []
+    for token in argv[argv.index(flag) + 1 :]:
+        if token.startswith("--"):
+            break
+        values.append(token)
+    return values
 
 
 def test_coerce_to_int_with_default():
@@ -240,14 +251,30 @@ def test_disabled_lora_rows_are_excluded():
             ],
         }
     )
-    lora_index = argv.index("--lora_list")
-    lora_tokens = argv[lora_index + 1 :]
-    lora_tokens = lora_tokens[: lora_tokens.index("--prompt")] if "--prompt" in lora_tokens else lora_tokens
+    lora_tokens = collect_flag_values(argv, "--lora_list")
     assert lora_tokens == ["/l/on.safetensors", "1.0", "/l/default.safetensors", "0.5"]
-    assert "/l/off.safetensors" not in argv
+    assert "/l/off.safetensors" not in lora_tokens  # disabled row is not merged
 
 
-def test_all_loras_disabled_yields_no_lora_flag():
+def test_all_lora_rows_including_disabled_are_recorded_for_the_sidecar():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "loras": [
+                {"path": "/l/on.safetensors", "strength": "1.0", "enabled": True},
+                {"path": "/l/off.safetensors", "strength": "0.7", "enabled": False},
+            ],
+        }
+    )
+    recorded_rows = json.loads(argv[argv.index("--record_lora_rows_json") + 1])
+    assert recorded_rows == [
+        {"path": "/l/on.safetensors", "multiplier": "1.0", "enabled": True},
+        {"path": "/l/off.safetensors", "multiplier": "0.7", "enabled": False},
+    ]
+
+
+def test_all_loras_disabled_yields_no_lora_flag_but_still_records_rows():
     argv = build_inference_command(
         {
             "dit_path": "/m/dit.safetensors",
@@ -256,6 +283,8 @@ def test_all_loras_disabled_yields_no_lora_flag():
         }
     )
     assert "--lora_list" not in argv
+    recorded_rows = json.loads(argv[argv.index("--record_lora_rows_json") + 1])
+    assert recorded_rows == [{"path": "/l/off.safetensors", "multiplier": "1.0", "enabled": False}]
 
 
 def test_from_image_mode_uses_from_image_embed_and_pre_prompt():

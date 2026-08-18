@@ -406,14 +406,14 @@ INDEX_HTML = """<!doctype html>
 </div>
 
 <script>
-function addLoraRow(path, strength) {
+function addLoraRow(path, strength, enabled) {
   const container = document.getElementById('loraList');
   const row = document.createElement('div');
   row.className = 'row';
   const enabledCheckbox = document.createElement('input');
   enabledCheckbox.type = 'checkbox';
   enabledCheckbox.className = 'loraEnabled';
-  enabledCheckbox.checked = true;  // enabled by default
+  enabledCheckbox.checked = (enabled === undefined) ? true : Boolean(enabled);  // enabled by default
   enabledCheckbox.title = 'enable/disable this LoRA';
   enabledCheckbox.style.flex = '0 0 auto';
   enabledCheckbox.style.width = 'auto';  // override the global input{width:100%} so it doesn't eat the row
@@ -653,7 +653,9 @@ function applyLoadedGenerationSettingsToForm(settings) {
   setFieldValueIfPresent('textEncoderPath', settings.text_encoder);
 
   document.getElementById('loraList').innerHTML = '';
-  (settings.loras || []).forEach(function(lora) { addLoraRow(lora.path, String(lora.multiplier)); });
+  (settings.loras || []).forEach(function(lora) {
+    addLoraRow(lora.path, String(lora.multiplier), lora.enabled !== false);  // preserve disabled rows
+  });
 }
 
 function loadImageSettingsIntoForm(imagePath) {

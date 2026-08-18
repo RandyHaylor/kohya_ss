@@ -2,6 +2,7 @@
 generation, and discover the sampler/scheduler choices from the inference script (without importing
 it, so the GUI stays dependency-free)."""
 
+import json
 import os
 import re
 from typing import Any, Dict, List, Tuple
@@ -70,17 +71,23 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     if text_encoder_path:
         command_argv += ["--text_encoder", text_encoder_path]
 
+    # Only enabled LoRAs are merged (--lora_list), but ALL rows (path, multiplier, enabled) are recorded
+    # in the settings sidecar (--record_lora_rows_json) so a disabled row survives a save/reload.
     lora_list_tokens: List[str] = []
+    recorded_lora_rows: List[Dict[str, Any]] = []
     for lora_entry in generation_request.get("loras", []) or []:
-        if not lora_entry.get("enabled", True):  # unchecked rows are skipped; default enabled
-            continue
         lora_path = str(lora_entry.get("path", "")).strip()
         if not lora_path:
             continue
         lora_strength = str(lora_entry.get("strength", "")).strip() or "1.0"
-        lora_list_tokens += [lora_path, lora_strength]
+        is_enabled = bool(lora_entry.get("enabled", True))  # default enabled
+        recorded_lora_rows.append({"path": lora_path, "multiplier": lora_strength, "enabled": is_enabled})
+        if is_enabled:
+            lora_list_tokens += [lora_path, lora_strength]
     if lora_list_tokens:
         command_argv += ["--lora_list"] + lora_list_tokens
+    if recorded_lora_rows:
+        command_argv += ["--record_lora_rows_json", json.dumps(recorded_lora_rows)]
 
     # LoRA test sweep: run the whole generation once per top-level .safetensors in this folder, on top
     # of the fixed LoRAs above. Multiplier defaults to 1.0.
