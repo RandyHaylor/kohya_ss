@@ -13,6 +13,7 @@ import collections
 import json
 import os
 import subprocess
+import tempfile
 import threading
 import queue as queue_module
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +27,7 @@ from inference_command_builder import (
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GENERATION_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generation.log")
+QUEUED_PROMPT_LISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queued_prompt_lists")
 
 generation_request_queue: "queue_module.Queue[dict]" = queue_module.Queue()
 server_state_lock = threading.Lock()
@@ -43,6 +45,23 @@ def append_log_line(text: str) -> None:
     print(line, flush=True)
     generation_log_file.write(line + "\n")
     generation_log_file.flush()
+
+
+def materialize_pasted_prompt_list(generation_request: dict) -> None:
+    """For from_prompt_list mode: if the user pasted a prompt list (and gave no file path), write it to
+    a .txt file and set prompt_list_path to it, so the CLI's --from_file has a real file to read."""
+    if generation_request.get("mode") != "from_prompt_list":
+        return
+    existing_path = str(generation_request.get("prompt_list_path", "")).strip()
+    pasted_text = str(generation_request.get("prompt_list_text", "")).strip()
+    if existing_path or not pasted_text:
+        return
+    os.makedirs(QUEUED_PROMPT_LISTS_DIR, exist_ok=True)
+    file_descriptor, list_path = tempfile.mkstemp(suffix=".txt", prefix="prompts_", dir=QUEUED_PROMPT_LISTS_DIR)
+    with os.fdopen(file_descriptor, "w", encoding="utf-8") as list_file:
+        list_file.write(pasted_text + "\n")
+    generation_request["prompt_list_path"] = list_path
+    append_log_line(f"Wrote pasted prompt list to: {list_path}")
 
 
 def make_request_label(generation_request: dict) -> str:
@@ -167,6 +186,7 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
             try:
                 generation_request = self._read_json_body()
                 quantity = coerce_quantity_to_positive_int(generation_request.pop("quantity", 1))
+                materialize_pasted_prompt_list(generation_request)  # paste -> temp .txt for --from_file
                 build_inference_command(generation_request)  # validate before queueing
             except (ValueError, json.JSONDecodeError) as error:
                 self._send_json({"error": str(error)}, status_code=400)
@@ -227,11 +247,20 @@ INDEX_HTML = """<!doctype html>
   <button type="button" onclick="postAction('/clear_queue')" title="drop pending queued gens; does not stop the running one">Clear Queue</button>
   <button type="button" onclick="postAction('/stop_current')">Stop Current</button>
   <button type="button" onclick="postAction('/stop_all')">Stop All</button>
+  <select id="modeSelect" title="generation mode" style="flex:0 0 auto;width:auto" onchange="applyModeVisibility()">
+    <option value="single">Single prompt</option>
+    <option value="from_image">From image folder</option>
+    <option value="from_prompt_list">From prompt list</option>
+  </select>
 </div>
 
 <div class="grid">
-  <div class="field span2"><label>Positive prompt</label><textarea id="positivePrompt" rows="2">masterpiece,best quality,score_7, the cutest bunny</textarea></div>
-  <div class="field span2"><label>Negative prompt</label><textarea id="negativePrompt" rows="2">worst quality, low quality, blurry</textarea></div>
+  <div class="field span2 mode-from_image" style="display:none"><label>Source PNG folder (--from_image_embed)</label><input id="sourceImageFolder" type="text" placeholder="/path/to/folder/of/pngs"></div>
+  <div class="field span2 mode-from_prompt_list" style="display:none"><label>Prompt list file (--from_file), OR paste below</label><input id="promptListPath" type="text" placeholder="/path/to/prompts.txt (leave blank if pasting)"></div>
+  <div class="field span2 mode-from_prompt_list" style="display:none"><label>Paste prompt list (one prompt per line)</label><textarea id="promptListText" rows="4"></textarea></div>
+
+  <div class="field span2"><label id="positivePromptLabel">Positive prompt</label><textarea id="positivePrompt" rows="2">masterpiece,best quality,score_7, the cutest bunny</textarea></div>
+  <div class="field span2"><label id="negativePromptLabel">Negative prompt</label><textarea id="negativePrompt" rows="2">worst quality, low quality, blurry</textarea></div>
 
   <div class="field"><label>Sampler (cycle advances each Queue Gen)</label><div class="row"><select id="sampler"></select><label class="cycleLabel"><input type="checkbox" id="samplerCycle"> cycle</label></div></div>
   <div class="field"><label>Scheduler</label><div class="row"><select id="scheduler"></select><label class="cycleLabel"><input type="checkbox" id="schedulerCycle"> cycle</label></div></div>
@@ -382,9 +411,22 @@ function applyPostQueueIncrementsAndCycles() {
   if (document.getElementById('resolutionCycle').checked) { cycleResolutionForNextGen(); }
 }
 
+function applyModeVisibility() {
+  const mode = document.getElementById('modeSelect').value;
+  document.querySelectorAll('.mode-from_image').forEach(function(el) { el.style.display = (mode === 'from_image') ? '' : 'none'; });
+  document.querySelectorAll('.mode-from_prompt_list').forEach(function(el) { el.style.display = (mode === 'from_prompt_list') ? '' : 'none'; });
+  const isFileOrImageMode = (mode === 'from_image' || mode === 'from_prompt_list');
+  document.getElementById('positivePromptLabel').textContent = isFileOrImageMode ? 'Pre-prompt (--pre_prompt)' : 'Positive prompt';
+  document.getElementById('negativePromptLabel').textContent = isFileOrImageMode ? 'Pre-prompt negative (--pre_prompt_neg)' : 'Negative prompt';
+}
+
 function buildRequest() {
   return {
     quantity: parseQuantityValue(document.getElementById('quantity').value),
+    mode: document.getElementById('modeSelect').value,
+    source_image_folder: document.getElementById('sourceImageFolder').value,
+    prompt_list_path: document.getElementById('promptListPath').value,
+    prompt_list_text: document.getElementById('promptListText').value,
     positive_prompt: document.getElementById('positivePrompt').value,
     negative_prompt: document.getElementById('negativePrompt').value,
     sampler: document.getElementById('sampler').value,
@@ -462,6 +504,7 @@ fetch('/choices').then(function(r) { return r.json(); }).then(function(choices) 
 });
 
 addLoraRow('/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors', '1');
+applyModeVisibility();
 
 setInterval(refreshStatus, 1500);
 refreshStatus();

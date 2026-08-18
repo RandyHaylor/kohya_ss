@@ -200,6 +200,61 @@ def test_all_loras_disabled_yields_no_lora_flag():
     assert "--lora_list" not in argv
 
 
+def test_from_image_mode_uses_from_image_embed_and_pre_prompt():
+    argv = build_inference_command(
+        {
+            "mode": "from_image",
+            "dit_path": "/m/dit.safetensors",
+            "source_image_folder": "/src/pngs",
+            "positive_prompt": "masterpiece",
+            "negative_prompt": "blurry",
+        }
+    )
+    assert argv[argv.index("--from_image_embed") + 1] == "/src/pngs"
+    assert argv[argv.index("--pre_prompt") + 1] == "masterpiece"
+    assert argv[argv.index("--pre_prompt_neg") + 1] == "blurry"
+    assert "--prompt" not in argv
+    assert "--negative_prompt" not in argv
+
+
+def test_from_prompt_list_mode_uses_from_file_and_pre_prompt():
+    argv = build_inference_command(
+        {
+            "mode": "from_prompt_list",
+            "dit_path": "/m/dit.safetensors",
+            "prompt_list_path": "/tmp/prompts.txt",
+            "positive_prompt": "masterpiece",
+        }
+    )
+    assert argv[argv.index("--from_file") + 1] == "/tmp/prompts.txt"
+    assert argv[argv.index("--pre_prompt") + 1] == "masterpiece"
+    assert "--prompt" not in argv
+
+
+def test_from_image_requires_source_folder():
+    try:
+        build_inference_command({"mode": "from_image", "dit_path": "/m/dit.safetensors"})
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when source_image_folder missing")
+
+
+def test_from_prompt_list_requires_path():
+    try:
+        build_inference_command({"mode": "from_prompt_list", "dit_path": "/m/dit.safetensors"})
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when prompt_list_path missing")
+
+
+def test_single_mode_still_requires_positive_prompt():
+    try:
+        build_inference_command({"mode": "single", "dit_path": "/m/dit.safetensors"})
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when positive_prompt missing in single mode")
+
+
 def test_multiline_prompt_is_a_single_argv_element():
     multiline_prompt = "line one,\nline two,\nline three"
     argv = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": multiline_prompt})

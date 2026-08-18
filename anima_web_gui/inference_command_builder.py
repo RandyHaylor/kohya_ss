@@ -43,12 +43,12 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     """
     dit_path = str(generation_request.get("dit_path", "")).strip()
     positive_prompt = str(generation_request.get("positive_prompt", ""))
+    negative_prompt = str(generation_request.get("negative_prompt", ""))
     save_path = str(generation_request.get("save_path", "")).strip() or DEFAULT_SAVE_PATH
+    mode = str(generation_request.get("mode", "single")).strip() or "single"
 
     if not dit_path:
         raise ValueError("dit_path is required")
-    if not positive_prompt.strip():
-        raise ValueError("positive_prompt is required")
 
     command_argv: List[str] = ["uv", "run", INFERENCE_SCRIPT_RELATIVE_PATH, "--dit", dit_path]
 
@@ -72,11 +72,32 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     if lora_list_tokens:
         command_argv += ["--lora_list"] + lora_list_tokens
 
-    command_argv += ["--prompt", positive_prompt]
-
-    negative_prompt = str(generation_request.get("negative_prompt", ""))
-    if negative_prompt.strip():
-        command_argv += ["--negative_prompt", negative_prompt]
+    # Prompt source depends on the mode. In the file/image modes the positive/negative fields are the
+    # pre-prompt (--pre_prompt / --pre_prompt_neg); in single mode they are the actual prompt.
+    if mode == "from_image":
+        source_image_folder = str(generation_request.get("source_image_folder", "")).strip()
+        if not source_image_folder:
+            raise ValueError("source_image_folder is required for from_image mode")
+        command_argv += ["--from_image_embed", source_image_folder]
+        if positive_prompt.strip():
+            command_argv += ["--pre_prompt", positive_prompt]
+        if negative_prompt.strip():
+            command_argv += ["--pre_prompt_neg", negative_prompt]
+    elif mode == "from_prompt_list":
+        prompt_list_path = str(generation_request.get("prompt_list_path", "")).strip()
+        if not prompt_list_path:
+            raise ValueError("prompt_list_path is required for from_prompt_list mode")
+        command_argv += ["--from_file", prompt_list_path]
+        if positive_prompt.strip():
+            command_argv += ["--pre_prompt", positive_prompt]
+        if negative_prompt.strip():
+            command_argv += ["--pre_prompt_neg", negative_prompt]
+    else:  # single embedded prompt
+        if not positive_prompt.strip():
+            raise ValueError("positive_prompt is required")
+        command_argv += ["--prompt", positive_prompt]
+        if negative_prompt.strip():
+            command_argv += ["--negative_prompt", negative_prompt]
 
     sampler = str(generation_request.get("sampler", "")).strip()
     if sampler:
