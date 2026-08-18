@@ -170,6 +170,44 @@ def test_resolution_presets_are_divisible_by_32():
         assert preset["label"]
 
 
+def test_images_per_prompt_emitted_when_gt_one():
+    argv = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "images_per_prompt": 4})
+    assert argv[argv.index("--images_per_prompt") + 1] == "4"
+
+
+def test_images_per_prompt_omitted_when_one_or_absent():
+    argv_one = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "images_per_prompt": 1})
+    argv_absent = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p"})
+    assert "--images_per_prompt" not in argv_one
+    assert "--images_per_prompt" not in argv_absent
+
+
+def test_lora_test_folder_emitted_with_default_multiplier():
+    argv = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "lora_test_folder": "/loras/_totest"}
+    )
+    index = argv.index("--lora_test_folder")
+    assert argv[index + 1 : index + 3] == ["/loras/_totest", "1.0"]
+
+
+def test_lora_test_folder_uses_provided_multiplier():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "lora_test_folder": "/loras/_totest",
+            "lora_test_multiplier": "0.8",
+        }
+    )
+    index = argv.index("--lora_test_folder")
+    assert argv[index + 1 : index + 3] == ["/loras/_totest", "0.8"]
+
+
+def test_lora_test_folder_omitted_when_blank():
+    argv = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p"})
+    assert "--lora_test_folder" not in argv
+
+
 def test_disabled_lora_rows_are_excluded():
     argv = build_inference_command(
         {

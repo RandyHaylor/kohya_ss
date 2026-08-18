@@ -186,15 +186,17 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
             try:
                 generation_request = self._read_json_body()
                 quantity = coerce_quantity_to_positive_int(generation_request.pop("quantity", 1))
+                # quantity -> images_per_prompt: ONE subprocess renders N seed-incremented images with a
+                # single model load, instead of enqueuing N reload-the-model copies.
+                generation_request["images_per_prompt"] = quantity
                 materialize_pasted_prompt_list(generation_request)  # paste -> temp .txt for --from_file
                 build_inference_command(generation_request)  # validate before queueing
             except (ValueError, json.JSONDecodeError) as error:
                 self._send_json({"error": str(error)}, status_code=400)
                 return
-            for _ in range(quantity):
-                generation_request_queue.put(generation_request)
-            append_log_line(f"Queued {quantity} generation(s): {make_request_label(generation_request)}")
-            self._send_json({"queued": generation_request_queue.qsize(), "enqueued": quantity})
+            generation_request_queue.put(generation_request)
+            append_log_line(f"Queued generation (images_per_prompt={quantity}): {make_request_label(generation_request)}")
+            self._send_json({"queued": generation_request_queue.qsize(), "images_per_prompt": quantity})
         elif self.path == "/clear_queue":
             dropped = clear_pending_queue()  # drops pending only; does NOT touch the running generation
             append_log_line(f"Clear queue requested; dropped {dropped} pending (running generation left alone).")
@@ -280,6 +282,13 @@ INDEX_HTML = """<!doctype html>
   <div class="field span2"><label>Save path (--save_path)</label><input id="savePath" type="text" value="./anima_out"></div>
 
   <div class="field span2"><label>LoRAs</label><div id="loraList"></div><button type="button" onclick="addLoraRow()" style="margin-top:4px;align-self:flex-start;">Add LoRA</button></div>
+
+  <div class="field span2"><label>LoRA test folder (--lora_test_folder): runs the whole gen once per .safetensors in the folder, on top of the LoRAs above (blank = off)</label>
+    <div class="row">
+      <input id="loraTestFolder" type="text" placeholder="/path/to/folder/of/loras (blank = off)">
+      <input id="loraTestMultiplier" class="increment" type="text" value="1" title="multiplier for each test LoRA">
+    </div>
+  </div>
 </div>
 
 <div id="status">
@@ -441,7 +450,9 @@ function buildRequest() {
     vae_path: document.getElementById('vaePath').value,
     text_encoder_path: document.getElementById('textEncoderPath').value,
     save_path: document.getElementById('savePath').value,
-    loras: collectLoras()
+    loras: collectLoras(),
+    lora_test_folder: document.getElementById('loraTestFolder').value,
+    lora_test_multiplier: document.getElementById('loraTestMultiplier').value
   };
 }
 

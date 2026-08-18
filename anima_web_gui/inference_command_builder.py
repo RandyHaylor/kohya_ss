@@ -72,6 +72,18 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     if lora_list_tokens:
         command_argv += ["--lora_list"] + lora_list_tokens
 
+    # LoRA test sweep: run the whole generation once per top-level .safetensors in this folder, on top
+    # of the fixed LoRAs above. Multiplier defaults to 1.0.
+    lora_test_folder = str(generation_request.get("lora_test_folder", "")).strip()
+    if lora_test_folder:
+        lora_test_multiplier = str(generation_request.get("lora_test_multiplier", "")).strip() or "1.0"
+        command_argv += ["--lora_test_folder", lora_test_folder, lora_test_multiplier]
+
+    # Number of images per run, seed-incremented in a single model load (the GUI 'quantity' maps here).
+    images_per_prompt = coerce_to_int_with_default(generation_request.get("images_per_prompt"), 1)
+    if images_per_prompt > 1:
+        command_argv += ["--images_per_prompt", str(images_per_prompt)]
+
     # Prompt source depends on the mode. In the file/image modes the positive/negative fields are the
     # pre-prompt (--pre_prompt / --pre_prompt_neg); in single mode they are the actual prompt.
     if mode == "from_image":
