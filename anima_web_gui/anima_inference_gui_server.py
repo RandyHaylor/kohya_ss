@@ -17,12 +17,19 @@ import tempfile
 import threading
 import queue as queue_module
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 from inference_command_builder import (
     ANIMA_RESOLUTION_PRESETS,
+    DEFAULT_SAVE_PATH,
     build_inference_command,
     coerce_quantity_to_positive_int,
     load_sampler_and_scheduler_choices,
+)
+from generated_image_gallery import (
+    is_path_within_allowed_directories,
+    list_generated_png_files_in_directories,
+    resolve_save_directory_absolute_path,
 )
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,6 +42,7 @@ currently_running_process = None  # subprocess.Popen while a generation is runni
 currently_running_label = None
 recent_log_lines = collections.deque(maxlen=500)
 generation_log_file = open(GENERATION_LOG_PATH, "a", encoding="utf-8")
+observed_save_directories = []  # ordered, de-duplicated absolute save dirs seen this session (for the gallery)
 
 
 def append_log_line(text: str) -> None:
@@ -45,6 +53,28 @@ def append_log_line(text: str) -> None:
     print(line, flush=True)
     generation_log_file.write(line + "\n")
     generation_log_file.flush()
+
+
+def register_observed_save_directory(save_path: str) -> None:
+    """Record (once) the absolute save directory for a generation so the gallery knows where to look
+    for its output PNGs and is allowed to serve them."""
+    absolute_directory = resolve_save_directory_absolute_path(save_path or DEFAULT_SAVE_PATH, REPO_ROOT)
+    with server_state_lock:
+        if absolute_directory not in observed_save_directories:
+            observed_save_directories.append(absolute_directory)
+
+
+def list_gallery_images_newest_first() -> list:
+    """Return the generated PNGs across every observed save directory, newest-first, as
+    {'path', 'name', 'mtime'} dicts for the gallery panel."""
+    with server_state_lock:
+        directories = list(observed_save_directories)
+    listing = list_generated_png_files_in_directories(directories)
+    listing.reverse()  # helper returns oldest-first; the gallery shows newest first
+    return [
+        {"path": entry["absolute_path"], "name": entry["file_name"], "mtime": entry["modified_time"]}
+        for entry in listing
+    ]
 
 
 def materialize_pasted_prompt_list(generation_request: dict) -> None:
@@ -164,20 +194,49 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, *args) -> None:
         pass  # keep the console focused on generation output, not HTTP access lines
 
+    def _send_png_file(self, absolute_path: str) -> None:
+        with open(absolute_path, "rb") as png_file:
+            body = png_file.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")  # a path may be overwritten by a new gen
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_generated_image(self, query_string: str) -> None:
+        requested_absolute_path = (parse_qs(query_string).get("path") or [""])[0]
+        with server_state_lock:
+            allowed_directories = list(observed_save_directories)
+        if (
+            not requested_absolute_path
+            or not is_path_within_allowed_directories(requested_absolute_path, allowed_directories)
+            or not os.path.isfile(requested_absolute_path)
+        ):
+            self._send_json({"error": "not found"}, status_code=404)
+            return
+        self._send_png_file(requested_absolute_path)
+
     def do_GET(self) -> None:
-        if self.path == "/" or self.path.startswith("/index"):
+        parsed_request = urlparse(self.path)
+        route = parsed_request.path
+        if route == "/" or route.startswith("/index"):
             body = INDEX_HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif self.path == "/choices":
+        elif route == "/choices":
             choices = load_sampler_and_scheduler_choices(REPO_ROOT)
             choices["resolution_presets"] = ANIMA_RESOLUTION_PRESETS
             self._send_json(choices)
-        elif self.path == "/status":
+        elif route == "/status":
             self._send_json(build_status_snapshot())
+        elif route == "/generated_images":
+            self._send_json({"images": list_gallery_images_newest_first()})
+        elif route == "/image":
+            self._serve_generated_image(parsed_request.query)
         else:
             self._send_json({"error": "not found"}, status_code=404)
 
@@ -191,6 +250,7 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
                 generation_request["images_per_prompt"] = quantity
                 materialize_pasted_prompt_list(generation_request)  # paste -> temp .txt for --from_file
                 build_inference_command(generation_request)  # validate before queueing
+                register_observed_save_directory(generation_request.get("save_path", ""))
             except (ValueError, json.JSONDecodeError) as error:
                 self._send_json({"error": str(error)}, status_code=400)
                 return
@@ -238,6 +298,13 @@ INDEX_HTML = """<!doctype html>
   button { padding: 6px 12px; cursor: pointer; }
   #status { margin-top: 12px; padding: 8px; background: #f4f4f4; border: 1px solid #ccc; }
   #logTail { white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 280px; overflow:auto; background:#111; color:#ddd; padding:8px; }
+  #galleryPanel { margin-top: 12px; border: 1px solid #ccc; }
+  #galleryHeader { cursor: pointer; padding: 6px 8px; background: #eee; font-weight: 600; user-select: none; }
+  #galleryThumbs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; max-height: 340px; overflow: auto; }
+  #galleryThumbs img { height: 110px; width: auto; cursor: pointer; border: 1px solid #ccc; background: #fafafa; }
+  #galleryEmpty { color: #777; font-style: italic; }
+  #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
+  #lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; }
 </style>
 </head>
 <body>
@@ -295,6 +362,13 @@ INDEX_HTML = """<!doctype html>
   <div id="statusLine">status: ...</div>
   <div id="logTail"></div>
 </div>
+
+<div id="galleryPanel">
+  <div id="galleryHeader" onclick="toggleGalleryExpanded()"><span id="galleryCaret">&#9656;</span> Generated images (<span id="galleryCount">0</span>)</div>
+  <div id="galleryThumbs" style="display:none"><span id="galleryEmpty">No images yet.</span></div>
+</div>
+
+<div id="lightbox" onclick="closeLightbox()"><img id="lightboxImage" alt="generated image"></div>
 
 <script>
 function addLoraRow(path, strength) {
@@ -479,6 +553,48 @@ function refreshStatus() {
   }).catch(function() {});
 }
 
+let galleryExpanded = false;
+const renderedGalleryImagePaths = new Set();
+
+function toggleGalleryExpanded() {
+  galleryExpanded = !galleryExpanded;
+  document.getElementById('galleryThumbs').style.display = galleryExpanded ? 'flex' : 'none';
+  document.getElementById('galleryCaret').innerHTML = galleryExpanded ? '&#9662;' : '&#9656;';
+}
+
+function openLightbox(imageSourceUrl) {
+  document.getElementById('lightboxImage').src = imageSourceUrl;
+  document.getElementById('lightbox').style.display = 'flex';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+  document.getElementById('lightboxImage').src = '';
+}
+
+function refreshGeneratedImages() {
+  fetch('/generated_images').then(function(r) { return r.json(); }).then(function(data) {
+    const images = data.images || [];  // newest-first from the server
+    document.getElementById('galleryCount').textContent = images.length;
+    const thumbsContainer = document.getElementById('galleryThumbs');
+    const emptyPlaceholder = document.getElementById('galleryEmpty');
+    if (emptyPlaceholder && images.length > 0) { emptyPlaceholder.remove(); }
+    // Iterate oldest-first and prepend, so the newest image ends up at the front and older
+    // already-rendered thumbnails keep their place.
+    for (let i = images.length - 1; i >= 0; i--) {
+      const image = images[i];
+      if (renderedGalleryImagePaths.has(image.path)) { continue; }
+      renderedGalleryImagePaths.add(image.path);
+      const imageSourceUrl = '/image?path=' + encodeURIComponent(image.path);
+      const thumbnail = document.createElement('img');
+      thumbnail.src = imageSourceUrl;
+      thumbnail.title = image.name;
+      thumbnail.onclick = function() { openLightbox(imageSourceUrl); };
+      thumbsContainer.insertBefore(thumbnail, thumbsContainer.firstChild);
+    }
+  }).catch(function() {});
+}
+
 fetch('/choices').then(function(r) { return r.json(); }).then(function(choices) {
   const samplerSelect = document.getElementById('sampler');
   const schedulerSelect = document.getElementById('scheduler');
@@ -518,7 +634,9 @@ addLoraRow('/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-st
 applyModeVisibility();
 
 setInterval(refreshStatus, 1500);
+setInterval(refreshGeneratedImages, 2500);
 refreshStatus();
+refreshGeneratedImages();
 </script>
 </body>
 </html>
@@ -530,6 +648,8 @@ def main() -> None:
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind (default localhost only)")
     parser.add_argument("--port", type=int, default=7861, help="Port to serve on (default 7861)")
     args = parser.parse_args()
+
+    register_observed_save_directory(DEFAULT_SAVE_PATH)  # show the default output folder from the start
 
     worker_thread = threading.Thread(target=generation_worker_loop, name="generation-worker", daemon=True)
     worker_thread.start()
