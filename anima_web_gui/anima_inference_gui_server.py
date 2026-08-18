@@ -305,6 +305,9 @@ INDEX_HTML = """<!doctype html>
   #galleryEmpty { color: #777; font-style: italic; }
   #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
   #lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; }
+  .lightboxNavButton { position: absolute; bottom: 16px; font-size: 26px; line-height: 1; padding: 6px 18px; cursor: pointer; background: rgba(255,255,255,0.85); border: none; border-radius: 6px; }
+  #lightboxPrevButton { left: 16px; }
+  #lightboxNextButton { right: 16px; }
 </style>
 </head>
 <body>
@@ -368,7 +371,11 @@ INDEX_HTML = """<!doctype html>
   <div id="galleryThumbs" style="display:none"><span id="galleryEmpty">No images yet.</span></div>
 </div>
 
-<div id="lightbox" onclick="closeLightbox()"><img id="lightboxImage" alt="generated image"></div>
+<div id="lightbox" onclick="closeLightbox()">
+  <button type="button" id="lightboxPrevButton" class="lightboxNavButton" title="previous image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(-1)">&lt;</button>
+  <img id="lightboxImage" alt="generated image">
+  <button type="button" id="lightboxNextButton" class="lightboxNavButton" title="next image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(1)">&gt;</button>
+</div>
 
 <script>
 function addLoraRow(path, strength) {
@@ -555,6 +562,8 @@ function refreshStatus() {
 
 let galleryExpanded = false;
 const renderedGalleryImagePaths = new Set();
+let orderedGalleryImagePathsNewestFirst = [];  // display order (index 0 = newest); drives lightbox cycling
+let currentLightboxImagePath = null;
 
 function toggleGalleryExpanded() {
   galleryExpanded = !galleryExpanded;
@@ -562,19 +571,37 @@ function toggleGalleryExpanded() {
   document.getElementById('galleryCaret').innerHTML = galleryExpanded ? '&#9662;' : '&#9656;';
 }
 
-function openLightbox(imageSourceUrl) {
-  document.getElementById('lightboxImage').src = imageSourceUrl;
+function imageUrlForPath(imagePath) {
+  return '/image?path=' + encodeURIComponent(imagePath);
+}
+
+function openLightbox(imagePath) {
+  currentLightboxImagePath = imagePath;
+  document.getElementById('lightboxImage').src = imageUrlForPath(imagePath);
   document.getElementById('lightbox').style.display = 'flex';
 }
 
 function closeLightbox() {
   document.getElementById('lightbox').style.display = 'none';
   document.getElementById('lightboxImage').src = '';
+  currentLightboxImagePath = null;
+}
+
+// Move the lightbox by offset positions in the current display order (wrapping around). Resolves the
+// current image by path each time so images arriving while open do not desync navigation.
+function showLightboxImageRelativeToCurrent(offset) {
+  const imageCount = orderedGalleryImagePathsNewestFirst.length;
+  if (imageCount === 0) { return; }
+  const currentIndex = orderedGalleryImagePathsNewestFirst.indexOf(currentLightboxImagePath);
+  const startIndex = currentIndex === -1 ? 0 : currentIndex;
+  const nextIndex = ((startIndex + offset) % imageCount + imageCount) % imageCount;
+  openLightbox(orderedGalleryImagePathsNewestFirst[nextIndex]);
 }
 
 function refreshGeneratedImages() {
   fetch('/generated_images').then(function(r) { return r.json(); }).then(function(data) {
     const images = data.images || [];  // newest-first from the server
+    orderedGalleryImagePathsNewestFirst = images.map(function(image) { return image.path; });
     document.getElementById('galleryCount').textContent = images.length;
     const thumbsContainer = document.getElementById('galleryThumbs');
     const emptyPlaceholder = document.getElementById('galleryEmpty');
@@ -585,11 +612,10 @@ function refreshGeneratedImages() {
       const image = images[i];
       if (renderedGalleryImagePaths.has(image.path)) { continue; }
       renderedGalleryImagePaths.add(image.path);
-      const imageSourceUrl = '/image?path=' + encodeURIComponent(image.path);
       const thumbnail = document.createElement('img');
-      thumbnail.src = imageSourceUrl;
+      thumbnail.src = imageUrlForPath(image.path);
       thumbnail.title = image.name;
-      thumbnail.onclick = function() { openLightbox(imageSourceUrl); };
+      thumbnail.onclick = function() { openLightbox(image.path); };
       thumbsContainer.insertBefore(thumbnail, thumbsContainer.firstChild);
     }
   }).catch(function() {});
