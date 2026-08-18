@@ -170,6 +170,26 @@ def test_resolution_presets_are_divisible_by_32():
         assert preset["label"]
 
 
+def test_1536_basis_presets_are_appended_after_the_1024_basis_ones():
+    expected_1536_basis_dimensions_in_order = [
+        (1536, 1536),
+        (1856, 1280),
+        (1280, 1856),
+        (1728, 1344),
+        (1344, 1728),
+        (2048, 1152),
+        (1152, 2048),
+        (2304, 960),
+        (960, 2304),
+    ]
+    trailing_presets = ANIMA_RESOLUTION_PRESETS[-len(expected_1536_basis_dimensions_in_order):]
+    actual_trailing_dimensions = [(preset["width"], preset["height"]) for preset in trailing_presets]
+    assert actual_trailing_dimensions == expected_1536_basis_dimensions_in_order
+
+    # The 1024-basis presets remain first (1024x1024 leads the list, unchanged).
+    assert (ANIMA_RESOLUTION_PRESETS[0]["width"], ANIMA_RESOLUTION_PRESETS[0]["height"]) == (1024, 1024)
+
+
 def test_images_per_prompt_emitted_when_gt_one():
     argv = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "images_per_prompt": 4})
     assert argv[argv.index("--images_per_prompt") + 1] == "4"

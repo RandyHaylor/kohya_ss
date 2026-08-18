@@ -30,6 +30,16 @@ ANIMA_RESOLUTION_PRESETS = [
     {"label": "768 x 1344 (portrait 9:16)", "width": 768, "height": 1344},
     {"label": "1536 x 640 (wide 12:5)", "width": 1536, "height": 640},
     {"label": "640 x 1536 (tall 5:12)", "width": 640, "height": 1536},
+    # 1536-basis buckets: the 1024-basis ratios above scaled 1.5x, snapped to multiples of 64.
+    {"label": "1536 x 1536 (1:1) [1536]", "width": 1536, "height": 1536},
+    {"label": "1856 x 1280 (landscape 3:2) [1536]", "width": 1856, "height": 1280},
+    {"label": "1280 x 1856 (portrait 2:3) [1536]", "width": 1280, "height": 1856},
+    {"label": "1728 x 1344 (landscape 9:7) [1536]", "width": 1728, "height": 1344},
+    {"label": "1344 x 1728 (portrait 7:9) [1536]", "width": 1344, "height": 1728},
+    {"label": "2048 x 1152 (landscape 16:9) [1536]", "width": 2048, "height": 1152},
+    {"label": "1152 x 2048 (portrait 9:16) [1536]", "width": 1152, "height": 2048},
+    {"label": "2304 x 960 (wide 12:5) [1536]", "width": 2304, "height": 960},
+    {"label": "960 x 2304 (tall 5:12) [1536]", "width": 960, "height": 2304},
 ]
 
 
