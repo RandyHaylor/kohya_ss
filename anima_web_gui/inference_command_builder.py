@@ -169,6 +169,23 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     guidance_scale = coerce_to_float_with_default(generation_request.get("guidance_scale"), DEFAULT_GUIDANCE_SCALE)
     command_argv += ["--infer_steps", str(infer_steps), "--guidance_scale", str(guidance_scale)]
 
+    # Serialize model-file disk reads across concurrent generations: when a lock file path is given,
+    # each spawned process holds an exclusive lock on it while loading models from disk, so concurrent
+    # runs load one at a time (and their GPU denoise phases naturally stagger). Omitted when blank.
+    model_load_disk_lock_file = str(generation_request.get("model_load_disk_lock_file", "")).strip()
+    if model_load_disk_lock_file:
+        command_argv += ["--model_load_disk_lock_file", model_load_disk_lock_file]
+
+    # Serialize GPU compute across concurrent generations: when a lock file path is given, each spawned
+    # process holds an exclusive lock on it while doing GPU work, so only one uses the GPU at a time. The
+    # scope selects how much GPU work is guarded (see the inference script's --gpu_lock_scope).
+    gpu_compute_lock_file = str(generation_request.get("gpu_compute_lock_file", "")).strip()
+    if gpu_compute_lock_file:
+        command_argv += ["--gpu_compute_lock_file", gpu_compute_lock_file]
+        gpu_lock_scope = str(generation_request.get("gpu_lock_scope", "")).strip()
+        if gpu_lock_scope:
+            command_argv += ["--gpu_lock_scope", gpu_lock_scope]
+
     command_argv += ["--save_path", save_path, "--output_type", "images"]
     return command_argv
 
@@ -207,6 +224,15 @@ def coerce_quantity_to_positive_int(raw_quantity: Any) -> int:
         return 1
     quantity = int(number)  # truncate toward zero
     return quantity if quantity >= 1 else 1
+
+
+def coerce_concurrency_to_positive_int(raw_concurrency: Any) -> int:
+    """Normalize a 'max concurrent generations' value to a positive integer (>= 1).
+
+    Same rules as coerce_quantity_to_positive_int: truncate a float toward zero, ignore whitespace,
+    and fall back to 1 for any non-numeric / empty / None / below-1 value.
+    """
+    return coerce_quantity_to_positive_int(raw_concurrency)
 
 
 def _parse_choice_tuple_from_source(source_text: str, choice_variable_name: str) -> Tuple[str, ...]:

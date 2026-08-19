@@ -1,8 +1,9 @@
 """Tiny local web GUI for single-prompt Anima generations.
 
-v1 scope: build the embedded --prompt command line from a form (positive/negative prompt, sampler and
-scheduler dropdowns, model paths, and an add/remove LoRA list) and run generations strictly one at a
-time via a queue. Buttons: Queue Gen, Stop Current, Stop All. The spawned generation's console output
+Scope: build the embedded --prompt command line from a form (positive/negative prompt, sampler and
+scheduler dropdowns, model paths, and an add/remove LoRA list) and run generations from a queue, up to
+max_concurrent_generations at once (default 1; each concurrent generation loads its own full copy of the
+model, so raise it only as far as VRAM allows). Buttons: Queue Gen, Stop Current, Stop All. Each spawned generation's console output
 is streamed to this server's stdout (launch it in your own window to watch it) and appended to a log
 file next to this script. Stdlib only - no torch/venv needed to run the server; it just spawns
 `uv run sd-scripts/anima_minimal_inference.py ...` from the repo root.
@@ -23,6 +24,7 @@ from inference_command_builder import (
     ANIMA_RESOLUTION_PRESETS,
     DEFAULT_SAVE_PATH,
     build_inference_command,
+    coerce_concurrency_to_positive_int,
     coerce_quantity_to_positive_int,
     load_sampler_and_scheduler_choices,
 )
@@ -36,11 +38,25 @@ from generated_image_gallery import (
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GENERATION_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generation.log")
 QUEUED_PROMPT_LISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queued_prompt_lists")
+# Shared by every spawned generation so their model-file disk reads serialize across processes (one loads
+# from disk at a time; see --model_load_disk_lock_file in the inference script).
+MODEL_LOAD_DISK_LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_load_disk.lock")
+# Shared GPU lock so concurrent generations use the GPU one at a time (see --gpu_compute_lock_file).
+GPU_COMPUTE_LOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gpu_compute.lock")
+GPU_LOCK_SCOPE_STRICT = "all"  # lock text-encode + denoise + VAE-decode
+GPU_LOCK_SCOPE_DENOISE_ONLY = "denoise"  # lock only the denoise loop
+
+DEFAULT_MAX_CONCURRENT_GENERATIONS = 1
 
 generation_request_queue: "queue_module.Queue[dict]" = queue_module.Queue()
 server_state_lock = threading.Lock()
-currently_running_process = None  # subprocess.Popen while a generation is running, else None
-currently_running_label = None
+# A slot frees (a generation finishes) -> notify the dispatcher so it can start the next queued one.
+# Reuses server_state_lock so the running-set, the counter, and the limit are all read/written under one lock.
+generation_slot_available_condition = threading.Condition(server_state_lock)
+max_concurrent_generations = DEFAULT_MAX_CONCURRENT_GENERATIONS
+active_generation_count = 0  # generations currently running (dispatched, not yet finished)
+next_running_generation_id = 0  # monotonic id handed to each dispatched generation
+running_generations_by_id = {}  # id -> {"process": Popen, "label": str} for every in-flight generation
 recent_log_lines = collections.deque(maxlen=500)
 generation_log_file = open(GENERATION_LOG_PATH, "a", encoding="utf-8")
 observed_save_directories = []  # ordered, de-duplicated absolute save dirs seen this session (for the gallery)
@@ -95,15 +111,73 @@ def materialize_pasted_prompt_list(generation_request: dict) -> None:
     append_log_line(f"Wrote pasted prompt list to: {list_path}")
 
 
+def apply_resource_serialization_locks_from_request(generation_request: dict) -> None:
+    """Translate the GUI's serialization checkboxes into the inference script's lock flags, using this
+    server's shared lock file paths so all spawned generations contend on the same locks.
+
+    - serialize_disk_loads (default on): pass --model_load_disk_lock_file so only one process reads model
+      files from disk at a time.
+    - serialize_gpu_compute (default on): pass --gpu_compute_lock_file so only one process uses the GPU
+      at a time. gpu_lock_strict (default off) selects the 'all compute' scope (text-encode + denoise +
+      VAE-decode) vs denoise-only.
+    """
+    if generation_request.get("serialize_disk_loads", True):
+        generation_request["model_load_disk_lock_file"] = MODEL_LOAD_DISK_LOCK_PATH
+    if generation_request.get("serialize_gpu_compute", True):
+        generation_request["gpu_compute_lock_file"] = GPU_COMPUTE_LOCK_PATH
+        generation_request["gpu_lock_scope"] = (
+            GPU_LOCK_SCOPE_STRICT if generation_request.get("gpu_lock_strict", False) else GPU_LOCK_SCOPE_DENOISE_ONLY
+        )
+
+
 def make_request_label(generation_request: dict) -> str:
     prompt_preview = str(generation_request.get("positive_prompt", "")).strip().replace("\n", " ")
     return (prompt_preview[:60] + "...") if len(prompt_preview) > 60 else (prompt_preview or "(no prompt)")
 
 
-def run_one_generation(generation_request: dict) -> None:
-    """Spawn the inference CLI for one request and stream its output until it returns."""
-    global currently_running_process, currently_running_label
+def set_max_concurrent_generations(raw_value) -> int:
+    """Set how many generations may run at once (coerced to >= 1) and wake the dispatcher so it can
+    fill any newly-available slots. Returns the value that was set."""
+    global max_concurrent_generations
+    new_limit = coerce_concurrency_to_positive_int(raw_value)
+    with generation_slot_available_condition:
+        max_concurrent_generations = new_limit
+        generation_slot_available_condition.notify_all()
+    return new_limit
 
+
+def get_max_concurrent_generations() -> int:
+    with server_state_lock:
+        return max_concurrent_generations
+
+
+def _register_running_generation(process, label: str) -> int:
+    """Record a freshly-spawned generation under a new id (for status display and stop)."""
+    global next_running_generation_id
+    with server_state_lock:
+        generation_id = next_running_generation_id
+        next_running_generation_id += 1
+        running_generations_by_id[generation_id] = {"process": process, "label": label}
+    return generation_id
+
+
+def _deregister_running_generation(generation_id: int) -> None:
+    with server_state_lock:
+        running_generations_by_id.pop(generation_id, None)
+
+
+def _release_generation_slot() -> None:
+    """Free the slot the dispatcher reserved for one generation and wake the dispatcher. Called exactly
+    once per dispatched generation, by its worker thread, whether it succeeded or failed."""
+    global active_generation_count
+    with generation_slot_available_condition:
+        active_generation_count -= 1
+        generation_slot_available_condition.notify_all()
+
+
+def run_one_generation(generation_request: dict) -> None:
+    """Spawn the inference CLI for one request and stream its output until it returns. Registers the
+    process in the running set so status/stop can see it, and deregisters it when done."""
     command_argv = build_inference_command(generation_request)
     label = make_request_label(generation_request)
     append_log_line(f"=== START generation: {label} ===")
@@ -117,41 +191,59 @@ def run_one_generation(generation_request: dict) -> None:
         text=True,
         bufsize=1,
     )
-    with server_state_lock:
-        currently_running_process = process
-        currently_running_label = label
-
-    for output_line in process.stdout:
-        append_log_line(output_line)
-    process.wait()
-
-    with server_state_lock:
-        currently_running_process = None
-        currently_running_label = None
-    append_log_line(f"=== END generation (exit code {process.returncode}): {label} ===")
+    generation_id = _register_running_generation(process, label)
+    try:
+        for output_line in process.stdout:
+            append_log_line(output_line)
+        process.wait()
+        append_log_line(f"=== END generation (exit code {process.returncode}): {label} ===")
+    finally:
+        _deregister_running_generation(generation_id)
 
 
-def generation_worker_loop() -> None:
-    """Single worker: pull one request at a time and run it to completion before the next."""
+def _run_generation_in_worker_thread(generation_request: dict) -> None:
+    """Body of each concurrent worker thread: run one generation, then always free its slot and mark
+    the queue item done. Owns the slot counter so it is released exactly once per generation."""
+    try:
+        run_one_generation(generation_request)
+    except Exception as error:  # keep the server alive across a single bad request
+        append_log_line(f"ERROR running generation: {error}")
+    finally:
+        _release_generation_slot()
+        generation_request_queue.task_done()
+
+
+def generation_dispatcher_loop() -> None:
+    """Single dispatcher: wait for a free slot (up to max_concurrent_generations), pull one queued
+    request, reserve a slot, and hand it to a worker thread. Only this thread increments the active
+    count, so the concurrency limit can never be exceeded even while it changes at runtime."""
+    global active_generation_count
     while True:
-        generation_request = generation_request_queue.get()
-        try:
-            run_one_generation(generation_request)
-        except Exception as error:  # keep the worker alive across a single bad request
-            append_log_line(f"ERROR running generation: {error}")
-        finally:
-            generation_request_queue.task_done()
+        with generation_slot_available_condition:
+            while active_generation_count >= max_concurrent_generations:
+                generation_slot_available_condition.wait()
+        generation_request = generation_request_queue.get()  # blocks until something is queued
+        with generation_slot_available_condition:
+            active_generation_count += 1
+        worker_thread = threading.Thread(
+            target=_run_generation_in_worker_thread,
+            args=(generation_request,),
+            name="generation-worker",
+            daemon=True,
+        )
+        worker_thread.start()
 
 
-def terminate_current_generation() -> bool:
-    """Signal the currently running generation to stop (SIGTERM). Returns True if one was running."""
+def terminate_all_running_generations() -> int:
+    """Signal every in-flight generation to stop (SIGTERM). Returns how many were running."""
     with server_state_lock:
-        process = currently_running_process
-    if process is None:
-        return False
-    append_log_line("Stop current requested; terminating running generation.")
-    process.terminate()
-    return True
+        processes = [entry["process"] for entry in running_generations_by_id.values()]
+    if not processes:
+        return 0
+    append_log_line(f"Stop requested; terminating {len(processes)} running generation(s).")
+    for process in processes:
+        process.terminate()
+    return len(processes)
 
 
 def clear_pending_queue() -> int:
@@ -169,9 +261,12 @@ def clear_pending_queue() -> int:
 
 def build_status_snapshot() -> dict:
     with server_state_lock:
+        running_labels = [entry["label"] for entry in running_generations_by_id.values()]
         return {
-            "running": currently_running_process is not None,
-            "running_label": currently_running_label,
+            "running": len(running_labels) > 0,
+            "running_count": len(running_labels),
+            "running_labels": running_labels,
+            "max_concurrent": max_concurrent_generations,
             "queued": generation_request_queue.qsize(),
             "log_tail": list(recent_log_lines)[-40:],
         }
@@ -255,6 +350,8 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(choices)
         elif route == "/status":
             self._send_json(build_status_snapshot())
+        elif route == "/concurrency":
+            self._send_json({"max_concurrent": get_max_concurrent_generations()})
         elif route == "/generated_images":
             self._send_json({"images": list_gallery_images_newest_first()})
         elif route == "/image":
@@ -272,6 +369,7 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
                 # quantity -> images_per_prompt: ONE subprocess renders N seed-incremented images with a
                 # single model load, instead of enqueuing N reload-the-model copies.
                 generation_request["images_per_prompt"] = quantity
+                apply_resource_serialization_locks_from_request(generation_request)  # disk/GPU serialization per the GUI checkboxes
                 materialize_pasted_prompt_list(generation_request)  # paste -> temp .txt for --from_file
                 build_inference_command(generation_request)  # validate before queueing
                 register_observed_save_directory(generation_request.get("save_path", ""))
@@ -286,13 +384,22 @@ class AnimaInferenceGuiRequestHandler(BaseHTTPRequestHandler):
             append_log_line(f"Clear queue requested; dropped {dropped} pending (running generation left alone).")
             self._send_json({"dropped": dropped})
         elif self.path == "/stop_current":
-            was_running = terminate_current_generation()
-            self._send_json({"stopped_current": was_running})
+            stopped_count = terminate_all_running_generations()
+            self._send_json({"stopped_count": stopped_count})
         elif self.path == "/stop_all":
             dropped = clear_pending_queue()
-            was_running = terminate_current_generation()
-            append_log_line(f"Stop all requested; dropped {dropped} queued, terminated running={was_running}.")
-            self._send_json({"dropped": dropped, "stopped_current": was_running})
+            stopped_count = terminate_all_running_generations()
+            append_log_line(f"Stop all requested; dropped {dropped} queued, terminated {stopped_count} running.")
+            self._send_json({"dropped": dropped, "stopped_count": stopped_count})
+        elif self.path == "/concurrency":
+            try:
+                request_body = self._read_json_body()
+            except json.JSONDecodeError as error:
+                self._send_json({"error": str(error)}, status_code=400)
+                return
+            new_limit = set_max_concurrent_generations(request_body.get("max_concurrent", 1))
+            append_log_line(f"Max concurrent generations set to {new_limit}.")
+            self._send_json({"max_concurrent": new_limit})
         else:
             self._send_json({"error": "not found"}, status_code=404)
 
@@ -342,7 +449,7 @@ INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-<h2>Anima Inference GUI - single prompt, queued one at a time</h2>
+<h2>Anima Inference GUI - queued, up to N concurrent generations</h2>
 
 <div class="topbar">
   <button type="button" onclick="queueGeneration()">Queue Gen</button>
@@ -350,6 +457,10 @@ INDEX_HTML = """<!doctype html>
   <button type="button" onclick="postAction('/clear_queue')" title="drop pending queued gens; does not stop the running one">Clear Queue</button>
   <button type="button" onclick="postAction('/stop_current')">Stop Current</button>
   <button type="button" onclick="postAction('/stop_all')">Stop All</button>
+  <label class="cycleLabel" title="how many generations run at once; each loads its own full model copy, so raise only as far as VRAM allows">concurrent<input id="maxConcurrent" type="text" value="1" style="width:44px;flex:0 0 44px" onchange="applyMaxConcurrentChange()"></label>
+  <label class="cycleLabel" title="serialize model-file disk reads across concurrent generations (one process reads models from disk at a time)"><input type="checkbox" id="serializeDiskLoads" checked> lock disk</label>
+  <label class="cycleLabel" title="serialize GPU use across concurrent generations (one process on the GPU at a time)"><input type="checkbox" id="serializeGpuCompute" checked> lock GPU</label>
+  <label class="cycleLabel" title="strict GPU lock: also serialize text-encode and VAE-decode, not just the denoise loop"><input type="checkbox" id="gpuLockStrict"> strict</label>
   <select id="modeSelect" title="generation mode" style="flex:0 0 auto;width:auto" onchange="applyModeVisibility()">
     <option value="single">Single prompt</option>
     <option value="from_image">From image folder</option>
@@ -638,7 +749,10 @@ function buildRequest() {
     save_path: document.getElementById('savePath').value,
     loras: collectLoras(),
     lora_test_folder: document.getElementById('loraTestFolder').value,
-    lora_test_multiplier: document.getElementById('loraTestMultiplier').value
+    lora_test_multiplier: document.getElementById('loraTestMultiplier').value,
+    serialize_disk_loads: document.getElementById('serializeDiskLoads').checked,
+    serialize_gpu_compute: document.getElementById('serializeGpuCompute').checked,
+    gpu_lock_strict: document.getElementById('gpuLockStrict').checked
   };
 }
 
@@ -659,10 +773,22 @@ function postAction(path) {
 
 function refreshStatus() {
   fetch('/status').then(function(r) { return r.json(); }).then(function(s) {
+    const runningLabels = s.running_labels || [];
+    const runningSuffix = runningLabels.length ? ' [' + runningLabels.join('] [') + ']' : '';
     document.getElementById('statusLine').textContent =
-      'running: ' + s.running + (s.running_label ? ' [' + s.running_label + ']' : '') + '  |  queued: ' + s.queued;
+      'running: ' + (s.running_count || 0) + '/' + (s.max_concurrent || 1) + runningSuffix + '  |  queued: ' + s.queued;
     document.getElementById('logTail').textContent = (s.log_tail || []).join('\\n');
   }).catch(function() {});
+}
+
+function applyMaxConcurrentChange() {
+  const field = document.getElementById('maxConcurrent');
+  const value = parseQuantityValue(field.value);
+  field.value = value;
+  fetch('/concurrency', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ max_concurrent: value }) })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { if (data.max_concurrent) { field.value = data.max_concurrent; } })
+    .catch(function(e) { alert('Failed to set concurrency: ' + e); });
 }
 
 let galleryExpanded = false;
@@ -821,6 +947,10 @@ addLoraRow('/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-st
 applyModeVisibility();
 attachCopyPasteButtonsToAllTextFields();
 
+fetch('/concurrency').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.max_concurrent) { document.getElementById('maxConcurrent').value = data.max_concurrent; }
+}).catch(function() {});
+
 setInterval(refreshStatus, 1500);
 setInterval(refreshGeneratedImages, 2500);
 refreshStatus();
@@ -835,12 +965,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Local web GUI for single-prompt Anima generations")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind (default localhost only)")
     parser.add_argument("--port", type=int, default=7861, help="Port to serve on (default 7861)")
+    parser.add_argument(
+        "--max_concurrent_generations",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENT_GENERATIONS,
+        help="How many generation subprocesses may run at once (default 1). Adjustable live in the UI. "
+        "Each concurrent generation loads its own full copy of the model, so raise this only as far as VRAM allows.",
+    )
     args = parser.parse_args()
 
+    set_max_concurrent_generations(args.max_concurrent_generations)
     register_observed_save_directory(DEFAULT_SAVE_PATH)  # show the default output folder from the start
 
-    worker_thread = threading.Thread(target=generation_worker_loop, name="generation-worker", daemon=True)
-    worker_thread.start()
+    dispatcher_thread = threading.Thread(target=generation_dispatcher_loop, name="generation-dispatcher", daemon=True)
+    dispatcher_thread.start()
 
     httpd = ThreadingHTTPServer((args.host, args.port), AnimaInferenceGuiRequestHandler)
     append_log_line(f"Anima inference GUI serving at http://{args.host}:{args.port} (repo root: {REPO_ROOT})")

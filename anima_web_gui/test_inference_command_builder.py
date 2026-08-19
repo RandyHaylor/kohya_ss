@@ -10,6 +10,7 @@ from inference_command_builder import (
     DEFAULT_INFER_STEPS,
     DEFAULT_SAVE_PATH,
     build_inference_command,
+    coerce_concurrency_to_positive_int,
     coerce_quantity_to_positive_int,
     coerce_to_float_with_default,
     coerce_to_int_with_default,
@@ -74,6 +75,18 @@ def test_coerce_quantity_to_positive_int():
     assert coerce_quantity_to_positive_int("0") == 1  # below 1 -> 1
     assert coerce_quantity_to_positive_int("-5") == 1
     assert coerce_quantity_to_positive_int(None) == 1
+
+
+def test_coerce_concurrency_to_positive_int():
+    assert coerce_concurrency_to_positive_int(1) == 1
+    assert coerce_concurrency_to_positive_int("4") == 4
+    assert coerce_concurrency_to_positive_int("  3  ") == 3
+    assert coerce_concurrency_to_positive_int("2.9") == 2  # float truncates
+    assert coerce_concurrency_to_positive_int("abc") == 1  # non-numeric -> 1
+    assert coerce_concurrency_to_positive_int("") == 1
+    assert coerce_concurrency_to_positive_int("0") == 1  # below 1 -> 1
+    assert coerce_concurrency_to_positive_int("-3") == 1
+    assert coerce_concurrency_to_positive_int(None) == 1
 
 
 def test_build_minimal_command_uses_defaults():
@@ -211,6 +224,56 @@ def test_images_per_prompt_omitted_when_one_or_absent():
     argv_absent = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p"})
     assert "--images_per_prompt" not in argv_one
     assert "--images_per_prompt" not in argv_absent
+
+
+def test_model_load_disk_lock_file_emitted_when_provided():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "model_load_disk_lock_file": "/tmp/model_load_disk.lock",
+        }
+    )
+    assert argv[argv.index("--model_load_disk_lock_file") + 1] == "/tmp/model_load_disk.lock"
+
+
+def test_model_load_disk_lock_file_omitted_when_blank_or_absent():
+    argv_blank = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "model_load_disk_lock_file": "  "}
+    )
+    argv_absent = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p"})
+    assert "--model_load_disk_lock_file" not in argv_blank
+    assert "--model_load_disk_lock_file" not in argv_absent
+
+
+def test_gpu_compute_lock_file_and_scope_emitted_when_provided():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "gpu_compute_lock_file": "/tmp/gpu_compute.lock",
+            "gpu_lock_scope": "all",
+        }
+    )
+    assert argv[argv.index("--gpu_compute_lock_file") + 1] == "/tmp/gpu_compute.lock"
+    assert argv[argv.index("--gpu_lock_scope") + 1] == "all"
+
+
+def test_gpu_lock_scope_omitted_when_no_lock_file():
+    argv = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "gpu_lock_scope": "all"}
+    )
+    assert "--gpu_compute_lock_file" not in argv
+    assert "--gpu_lock_scope" not in argv  # scope is meaningless without the lock file, so not emitted
+
+
+def test_gpu_compute_lock_file_omitted_when_blank_or_absent():
+    argv_blank = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "gpu_compute_lock_file": "  "}
+    )
+    argv_absent = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p"})
+    assert "--gpu_compute_lock_file" not in argv_blank
+    assert "--gpu_compute_lock_file" not in argv_absent
 
 
 def test_lora_test_folder_emitted_with_default_multiplier():

@@ -1,3 +1,5 @@
 generation.log
 queued_prompt_lists/
+model_load_disk.lock
+gpu_compute.lock
 __pycache__/

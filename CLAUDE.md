@@ -38,6 +38,29 @@ correct this file when you find it stale.
 - **`--lora_test_folder <dir> [mult]`**: A/B sweep — runs the whole configured generation once per
   top-level `.safetensors` on top of the fixed LoRAs (reloads models per test LoRA). A `<loraname>.txt`
   sidecar injects trigger text after `--pre_prompt`.
+- **`--model_load_disk_lock_file <path>`**: serialize model-file disk reads ACROSS processes. While a
+  process reads the DiT/text-encoder/VAE/LoRA weights from disk it holds an exclusive `flock` on this
+  file; other inference processes sharing the same path wait until it finishes loading. Denoising runs
+  outside the lock, so concurrent runs stagger disk-load vs GPU work. No flag = no locking (unchanged).
+  The lock is held across a whole **model-loading phase** — one process keeps it while loading ALL the
+  files it needs (VAE + DiT + text encoder), released only before GPU work — so it is NOT dropped between
+  files (dropping between files caused thrashing: a competing process grabbed it mid-load and requeued
+  the first). Each mode wraps its contiguous load region in `serialize_model_loading_phase(args)`, and the
+  per-file `serialize_model_file_disk_reads` locks inside `load_dit_model` / `load_text_encoder` /
+  `load_qwen_image_vae_serialized` nest under it. Both go through `hold_exclusive_cross_process_file_lock`,
+  which is **re-entrant per path within a thread** (thread-local depth map) so the phase lock and the
+  nested per-file locks share one held `flock` without self-deadlocking (a second `flock` on a new fd of
+  the same file would otherwise block against the first, even in one process). Streaming modes load VAE+TE
+  under the phase lock up front; their DiT loads lazily in `generate()` under its own held per-file lock.
+  POSIX-only (no-op if `fcntl` is unavailable). The web GUI passes a fixed lock path to every spawned gen.
+- **`--gpu_compute_lock_file <path>` / `--gpu_lock_scope {denoise,all}`**: serialize GPU compute ACROSS
+  processes so only one uses the GPU at a time. Combined with the disk lock, concurrent runs become a
+  pipeline (one loads from disk while another uses the GPU). `denoise` (default) locks only the denoise
+  loop (the heavy sustained cost); `all` also locks text-encode + VAE-decode (one process on the GPU at
+  any instant). Implemented via `serialize_gpu_compute(args, gpu_phase)` wrapping the three GPU spans;
+  every guarded span is disk-read free, so the GPU lock can't deadlock against the disk lock (a process
+  never waits on the disk lock while holding the GPU lock). Uses the shared
+  `hold_exclusive_cross_process_file_lock` context manager (same `flock` core as the disk lock).
 - **`--prompt_count` / `--prompt_count_skip_first`**: usable-counted limit/pagination (skipped/unusable
   prompts don't count). **`--images_per_prompt N`**: N seed-incremented images per prompt in ONE model
   load — honored in **single `--prompt`** and **`--from_image_embed`** (NOT from_file/from_folder yet).
@@ -75,7 +98,16 @@ correct this file when you find it stale.
 ## Local web GUI
 
 - `anima_web_gui/` — **stdlib-only** HTTP server that builds the single-`--prompt`/from_image/from_file
-  command and runs generations one at a time via a queue. Launch (own window, to watch output):
+  command and runs queued generations up to **`max_concurrent_generations`** at once (default 1; startup
+  flag `--max_concurrent_generations` and a live UI control — the `/concurrency` GET/POST endpoint). Each
+  concurrent generation is its own subprocess loading its own full model copy (N× VRAM, GPU time-slices),
+  so raise it only as far as VRAM allows. A single dispatcher thread gates on a Condition; "Stop Current"
+  terminates **all** in-flight processes. The server passes every spawned generation a shared
+  `--model_load_disk_lock_file` (`model_load_disk.lock`) and `--gpu_compute_lock_file` (`gpu_compute.lock`),
+  so concurrent runs read model files from disk one at a time and use the GPU one at a time (a load-vs-GPU
+  pipeline). Three topbar checkboxes control it: **lock disk** / **lock GPU** (both default on) and
+  **strict** (default off → GPU `all`-compute scope vs denoise-only), translated to flags server-side by
+  `apply_resource_serialization_locks_from_request`. Launch (own window, to watch output):
   `python3 /media/aikenyon/NVME_2/kohya_ss/anima_web_gui/anima_inference_gui_server.py` → http://127.0.0.1:7861.
 - `inference_command_builder.py` = pure argv builder (unit-tested); `anima_inference_gui_server.py` =
   server + embedded HTML/JS. Sampler/scheduler choices are parsed out of the inference script source
