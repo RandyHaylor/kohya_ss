@@ -186,6 +186,28 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
         if gpu_lock_scope:
             command_argv += ["--gpu_lock_scope", gpu_lock_scope]
 
+    # Anima-Safe PAG: emitted only when the GUI's PAG checkbox is on. All settings are passed through so
+    # a render reproduces exactly what the form shows; head_indices is omitted when blank (= all heads).
+    if generation_request.get("pag_enabled"):
+        command_argv += ["--pag"]
+        command_argv += ["--pag_scale", str(coerce_to_float_with_default(generation_request.get("pag_scale"), 4.0))]
+        pag_block_indices = str(generation_request.get("pag_block_indices", "")).strip()
+        if pag_block_indices:
+            command_argv += ["--pag_block_indices", pag_block_indices]
+        command_argv += [
+            "--pag_perturbation_strength",
+            str(coerce_to_float_with_default(generation_request.get("pag_perturbation_strength"), 0.75)),
+        ]
+        pag_head_indices = str(generation_request.get("pag_head_indices", "")).strip()
+        if pag_head_indices:
+            command_argv += ["--pag_head_indices", pag_head_indices]
+        command_argv += ["--pag_start_percent", str(coerce_to_float_with_default(generation_request.get("pag_start_percent"), 0.0))]
+        command_argv += ["--pag_end_percent", str(coerce_to_float_with_default(generation_request.get("pag_end_percent"), 0.7))]
+        command_argv += ["--pag_rescale", str(coerce_to_float_with_default(generation_request.get("pag_rescale"), 0.2))]
+        pag_rescale_mode = str(generation_request.get("pag_rescale_mode", "")).strip()
+        if pag_rescale_mode:
+            command_argv += ["--pag_rescale_mode", pag_rescale_mode]
+
     command_argv += ["--save_path", save_path, "--output_type", "images"]
     return command_argv
 

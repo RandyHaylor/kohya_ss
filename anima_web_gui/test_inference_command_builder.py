@@ -276,6 +276,47 @@ def test_gpu_compute_lock_file_omitted_when_blank_or_absent():
     assert "--gpu_compute_lock_file" not in argv_absent
 
 
+def test_pag_flags_emitted_when_enabled():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "pag_enabled": True,
+            "pag_scale": "4.0",
+            "pag_block_indices": "18-20",
+            "pag_perturbation_strength": "0.75",
+            "pag_head_indices": "0,1",
+            "pag_start_percent": "0.0",
+            "pag_end_percent": "0.7",
+            "pag_rescale": "0.2",
+            "pag_rescale_mode": "full",
+        }
+    )
+    assert "--pag" in argv
+    assert argv[argv.index("--pag_scale") + 1] == "4.0"
+    assert argv[argv.index("--pag_block_indices") + 1] == "18-20"
+    assert argv[argv.index("--pag_perturbation_strength") + 1] == "0.75"
+    assert argv[argv.index("--pag_head_indices") + 1] == "0,1"
+    assert argv[argv.index("--pag_start_percent") + 1] == "0.0"
+    assert argv[argv.index("--pag_end_percent") + 1] == "0.7"
+    assert argv[argv.index("--pag_rescale") + 1] == "0.2"
+    assert argv[argv.index("--pag_rescale_mode") + 1] == "full"
+
+
+def test_pag_flags_absent_when_disabled():
+    argv = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "pag_enabled": False})
+    assert "--pag" not in argv
+    assert "--pag_scale" not in argv
+
+
+def test_pag_head_indices_omitted_when_blank():
+    argv = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "pag_enabled": True, "pag_head_indices": "  "}
+    )
+    assert "--pag" in argv
+    assert "--pag_head_indices" not in argv  # blank = all heads, flag omitted
+
+
 def test_lora_test_folder_emitted_with_default_multiplier():
     argv = build_inference_command(
         {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "lora_test_folder": "/loras/_totest"}

@@ -414,10 +414,17 @@ INDEX_HTML = """<!doctype html>
   h2 { margin: 2px 0 6px; font-size: 15px; }
   label { display: block; font-weight: 600; font-size: 11px; margin: 0 0 2px; color: #333; }
   textarea, input, select { width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: 13px; }
+  input[type=checkbox] { width: auto; }  /* checkboxes size to content, not the 100% above */
   textarea { resize: vertical; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
   .span2 { grid-column: 1 / -1; }
   .field { display: flex; flex-direction: column; }
+  .fourCol { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 12px; }
+  .miniField { display: flex; flex-direction: column; min-width: 0; }
+  .pagGroup { grid-column: 1 / -1; border: 1px solid #bbb; border-radius: 4px; padding: 2px 8px 8px; margin: 0; min-width: 0; }
+  .pagGroup > legend { font-weight: 600; font-size: 11px; color: #333; padding: 0 4px; }
+  .pagAdvancedGroup { border: 1px solid #ccc; border-radius: 4px; padding: 2px 8px 8px; margin-top: 8px; min-width: 0; }
+  .pagAdvancedGroup > legend { font-size: 11px; color: #555; padding: 0 4px; }
   .row { display: flex; gap: 6px; align-items: center; }
   .row input { flex: 1; }
   .row .strength { flex: 0 0 70px; }
@@ -439,15 +446,19 @@ INDEX_HTML = """<!doctype html>
   #galleryThumbs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; max-height: 340px; overflow: auto; }
   .thumbnailWrapper { position: relative; display: inline-block; line-height: 0; }
   .thumbnailWrapper img { height: 110px; width: auto; cursor: pointer; border: 1px solid #ccc; background: #fafafa; }
-  .loadSettingsButton { position: absolute; bottom: 3px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
-  .refreshImageButton { position: absolute; bottom: 21px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
+  .imageLoadGroup { position: absolute; bottom: 3px; right: 3px; margin: 0; padding: 0 3px 2px; border: 1px solid #999; border-radius: 3px; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; gap: 1px; }
+  .imageLoadGroup > legend { font-size: 9px; color: #333; padding: 0 2px; }
+  .imageLoadButton { font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; }
+  .refreshImageButton { position: absolute; bottom: 56px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
   #galleryEmpty { color: #777; font-style: italic; }
   #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
   #lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; }
   .lightboxNavButton { position: absolute; bottom: 16px; font-size: 26px; line-height: 1; padding: 6px 18px; cursor: pointer; background: rgba(255,255,255,0.85); border: none; border-radius: 6px; }
   #lightboxPrevButton { left: 16px; }
   #lightboxNextButton { right: 16px; }
-  #lightboxLoadButton { position: absolute; bottom: 64px; right: 16px; font-size: 15px; padding: 6px 14px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 6px; }
+  #lightboxLoadGroup { position: absolute; bottom: 64px; right: 16px; margin: 0; padding: 2px 8px 6px; border: 1px solid #999; border-radius: 6px; background: rgba(255,255,255,0.9); display: flex; gap: 6px; }
+  #lightboxLoadGroup > legend { font-size: 12px; color: #333; padding: 0 4px; }
+  .lightboxLoadButton { font-size: 15px; padding: 6px 14px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -484,11 +495,31 @@ INDEX_HTML = """<!doctype html>
   <div class="field"><label>Resolution preset (fills H/W)</label><div class="row"><select id="resolutionPreset"></select><label class="cycleLabel"><input type="checkbox" id="resolutionCycle"> cycle</label></div></div>
   <div class="field"><label>Width / Height (passed to --image_size as H W)</label><div class="row"><input id="imageWidth" type="text" value="832" placeholder="W" data-number-step-snap="16"><input id="imageHeight" type="text" value="1216" placeholder="H" data-number-step-snap="16"></div></div>
 
-  <div class="field"><label>Steps + increment/gen</label><div class="row"><input id="inferSteps" type="text" value="50" data-number-step="1" onchange="normalizeIntField('inferSteps', 50)"><input id="inferStepsIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- steps after each Queue Gen"></div></div>
-  <div class="field"><label>CFG + increment/gen</label><div class="row"><input id="guidanceScale" type="text" value="3.5" data-number-step="0.1" onchange="normalizeFloatField('guidanceScale', 3.5)"><input id="guidanceScaleIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- CFG after each Queue Gen"></div></div>
+  <div class="field span2"><div class="fourCol">
+    <div class="miniField"><label>Steps + inc/gen</label><div class="row"><input id="inferSteps" type="text" value="50" data-number-step="1" onchange="normalizeIntField('inferSteps', 50)"><input id="inferStepsIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- steps after each Queue Gen"></div></div>
+    <div class="miniField"><label>CFG + inc/gen</label><div class="row"><input id="guidanceScale" type="text" value="3.5" data-number-step="0.1" onchange="normalizeFloatField('guidanceScale', 3.5)"><input id="guidanceScaleIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- CFG after each Queue Gen"></div></div>
+    <div class="miniField"><label>Flow shift + inc/gen</label><div class="row"><input id="flowShift" type="text" value="5.0" data-number-step="0.1"><input id="flowShiftIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- flow shift after each Queue Gen"></div></div>
+    <div class="miniField"><label>Seed + inc/gen (-1=random)</label><div class="row"><input id="seed" type="text" value="42" data-number-step="1"><input id="seedIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- seed after each Queue Gen"></div></div>
+  </div></div>
 
-  <div class="field"><label>Flow shift + increment/gen (blank = default)</label><div class="row"><input id="flowShift" type="text" value="5.0" data-number-step="0.1"><input id="flowShiftIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- flow shift after each Queue Gen"></div></div>
-  <div class="field"><label>Seed + increment/gen (-1/blank = random)</label><div class="row"><input id="seed" type="text" value="42" data-number-step="1"><input id="seedIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- seed after each Queue Gen"></div></div>
+  <fieldset class="pagGroup">
+    <legend><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="pagEnabled" style="width:auto; margin:0;"> Anima-Safe PAG (perturbed attention guidance)</label></legend>
+    <div class="fourCol">
+      <div class="miniField"><label>PAG scale</label><input id="pagScale" type="text" value="4.0" data-number-step="0.1"></div>
+      <div class="miniField"><label>Block indices</label><input id="pagBlockIndices" type="text" value="18"></div>
+      <div class="miniField"><label>Perturb strength</label><input id="pagPerturbationStrength" type="text" value="0.75" data-number-step="0.1"></div>
+      <div class="miniField"><label>Start %</label><input id="pagStartPercent" type="text" value="0.0" data-number-step="0.1"></div>
+      <div class="miniField"><label>End %</label><input id="pagEndPercent" type="text" value="0.7" data-number-step="0.1"></div>
+    </div>
+    <fieldset class="pagAdvancedGroup">
+      <legend>advanced</legend>
+      <div class="fourCol">
+        <div class="miniField"><label>Head indices (blank=all)</label><input id="pagHeadIndices" type="text" value=""></div>
+        <div class="miniField"><label>Rescale</label><input id="pagRescale" type="text" value="0.2" data-number-step="0.1"></div>
+        <div class="miniField"><label>Rescale mode</label><select id="pagRescaleMode"><option value="full">full</option><option value="partial">partial</option></select></div>
+      </div>
+    </fieldset>
+  </fieldset>
 
   <div class="field span2"><label>DiT path (--dit; all-in-one checkpoint OK)</label><input id="ditPath" type="text" value="/media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors"></div>
   <div class="field"><label>VAE (--vae, optional)</label><input id="vaePath" type="text" value="/media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors"></div>
@@ -518,7 +549,11 @@ INDEX_HTML = """<!doctype html>
 <div id="lightbox" onclick="closeLightbox()">
   <button type="button" id="lightboxPrevButton" class="lightboxNavButton" title="previous image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(-1)">&lt;</button>
   <img id="lightboxImage" alt="generated image">
-  <button type="button" id="lightboxLoadButton" title="load this image's settings into the form" onclick="event.stopPropagation(); loadImageSettingsIntoForm(currentLightboxImagePath)">Load settings</button>
+  <fieldset id="lightboxLoadGroup" onclick="event.stopPropagation()">
+    <legend>Load</legend>
+    <button type="button" class="lightboxLoadButton" title="load this image's generation settings (not model paths)" onclick="loadImageGenerationSettings(currentLightboxImagePath)">Settings</button>
+    <button type="button" class="lightboxLoadButton" title="load this image's model paths (DiT/VAE/text encoder)" onclick="loadImageModelPaths(currentLightboxImagePath)">Models</button>
+  </fieldset>
   <button type="button" id="lightboxNextButton" class="lightboxNavButton" title="next image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(1)">&gt;</button>
 </div>
 
@@ -810,7 +845,16 @@ function buildRequest() {
     lora_test_multiplier: document.getElementById('loraTestMultiplier').value,
     serialize_disk_loads: document.getElementById('serializeDiskLoads').checked,
     serialize_gpu_compute: document.getElementById('serializeGpuCompute').checked,
-    gpu_lock_strict: document.getElementById('gpuLockStrict').checked
+    gpu_lock_strict: document.getElementById('gpuLockStrict').checked,
+    pag_enabled: document.getElementById('pagEnabled').checked,
+    pag_scale: document.getElementById('pagScale').value,
+    pag_block_indices: document.getElementById('pagBlockIndices').value,
+    pag_perturbation_strength: document.getElementById('pagPerturbationStrength').value,
+    pag_head_indices: document.getElementById('pagHeadIndices').value,
+    pag_start_percent: document.getElementById('pagStartPercent').value,
+    pag_end_percent: document.getElementById('pagEndPercent').value,
+    pag_rescale: document.getElementById('pagRescale').value,
+    pag_rescale_mode: document.getElementById('pagRescaleMode').value
   };
 }
 
@@ -916,9 +960,50 @@ function setFieldValueIfPresent(elementId, value) {
   document.getElementById(elementId).value = value;
 }
 
-function applyLoadedGenerationSettingsToForm(settings) {
-  // These generated-image settings describe a single embedded-prompt render, so reproduce them in
-  // single-prompt mode with the exact height/width (preset selector back to custom).
+// Repo defaults for the PAG form fields, used when a loaded image predates PAG (has no 'pag' settings).
+var PAG_FORM_FIELD_DEFAULTS = {
+  scale: '4.0', block_indices: '18', perturbation_strength: '0.75', head_indices: '',
+  start_percent: '0.0', end_percent: '0.7', rescale: '0.2', rescale_mode: 'full'
+};
+
+function applyPagSettingsToForm(settings) {
+  const pag = settings.pag;
+  if (pag) {
+    document.getElementById('pagEnabled').checked = (pag.enabled === true);
+    setFieldValueIfPresent('pagScale', pag.scale);
+    setFieldValueIfPresent('pagBlockIndices', pag.block_indices);
+    setFieldValueIfPresent('pagPerturbationStrength', pag.perturbation_strength);
+    document.getElementById('pagHeadIndices').value = (pag.head_indices == null) ? '' : pag.head_indices;
+    setFieldValueIfPresent('pagStartPercent', pag.start_percent);
+    setFieldValueIfPresent('pagEndPercent', pag.end_percent);
+    setFieldValueIfPresent('pagRescale', pag.rescale);
+    setFieldValueIfPresent('pagRescaleMode', pag.rescale_mode);
+  } else {
+    // Image predates PAG: load PAG defaults but leave the box unchecked (its PAG state is unknown).
+    document.getElementById('pagEnabled').checked = false;
+    document.getElementById('pagScale').value = PAG_FORM_FIELD_DEFAULTS.scale;
+    document.getElementById('pagBlockIndices').value = PAG_FORM_FIELD_DEFAULTS.block_indices;
+    document.getElementById('pagPerturbationStrength').value = PAG_FORM_FIELD_DEFAULTS.perturbation_strength;
+    document.getElementById('pagHeadIndices').value = PAG_FORM_FIELD_DEFAULTS.head_indices;
+    document.getElementById('pagStartPercent').value = PAG_FORM_FIELD_DEFAULTS.start_percent;
+    document.getElementById('pagEndPercent').value = PAG_FORM_FIELD_DEFAULTS.end_percent;
+    document.getElementById('pagRescale').value = PAG_FORM_FIELD_DEFAULTS.rescale;
+    document.getElementById('pagRescaleMode').value = PAG_FORM_FIELD_DEFAULTS.rescale_mode;
+  }
+}
+
+// Load only the model paths (DiT/VAE/text encoder) from an image's settings — kept separate from the
+// generation settings so you can swap the prompt/params without changing models, and vice versa.
+function applyModelPathsFromSettings(settings) {
+  setFieldValueIfPresent('ditPath', settings.dit);
+  setFieldValueIfPresent('vaePath', settings.vae);
+  setFieldValueIfPresent('textEncoderPath', settings.text_encoder);
+}
+
+// Load the generation settings (prompt, size, steps, sampler, LoRAs, PAG, ...) but NOT the model paths.
+function applyGenerationSettingsExcludingModels(settings) {
+  // These settings describe a single embedded-prompt render, so reproduce them in single-prompt mode
+  // with the exact height/width (preset selector back to custom).
   document.getElementById('modeSelect').value = 'single';
   applyModeVisibility();
   document.getElementById('resolutionPreset').value = '';
@@ -933,17 +1018,16 @@ function applyLoadedGenerationSettingsToForm(settings) {
   setFieldValueIfPresent('seed', settings.seed);
   setFieldValueIfPresent('sampler', settings.sampler);
   setFieldValueIfPresent('scheduler', settings.scheduler);
-  setFieldValueIfPresent('ditPath', settings.dit);
-  setFieldValueIfPresent('vaePath', settings.vae);
-  setFieldValueIfPresent('textEncoderPath', settings.text_encoder);
 
   document.getElementById('loraList').innerHTML = '';
   (settings.loras || []).forEach(function(lora) {
     addLoraRow(lora.path, String(lora.multiplier), lora.enabled !== false);  // preserve disabled rows
   });
+
+  applyPagSettingsToForm(settings);
 }
 
-function loadImageSettingsIntoForm(imagePath) {
+function fetchImageSettingsThen(imagePath, applySettingsCallback) {
   if (!imagePath) { return; }
   fetch('/image_settings?path=' + encodeURIComponent(imagePath))
     .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
@@ -952,9 +1036,36 @@ function loadImageSettingsIntoForm(imagePath) {
         alert((response.data && response.data.error) || 'No settings found for this image.');
         return;
       }
-      applyLoadedGenerationSettingsToForm(response.data.settings);
+      applySettingsCallback(response.data.settings);
     })
     .catch(function(e) { alert('Failed to load settings: ' + e); });
+}
+
+function loadImageGenerationSettings(imagePath) { fetchImageSettingsThen(imagePath, applyGenerationSettingsExcludingModels); }
+function loadImageModelPaths(imagePath) { fetchImageSettingsThen(imagePath, applyModelPathsFromSettings); }
+
+// Build the small bordered "Load" group (Settings / Models buttons) overlaid on a gallery thumbnail.
+function createImageLoadGroup(imagePath) {
+  const group = document.createElement('fieldset');
+  group.className = 'imageLoadGroup';
+  const legend = document.createElement('legend');
+  legend.textContent = 'Load';
+  const settingsButton = document.createElement('button');
+  settingsButton.type = 'button';
+  settingsButton.className = 'imageLoadButton';
+  settingsButton.textContent = 'Settings';
+  settingsButton.title = "load this image's generation settings (not model paths)";
+  settingsButton.onclick = function(event) { event.stopPropagation(); loadImageGenerationSettings(imagePath); };
+  const modelsButton = document.createElement('button');
+  modelsButton.type = 'button';
+  modelsButton.className = 'imageLoadButton';
+  modelsButton.textContent = 'Models';
+  modelsButton.title = "load this image's model paths (DiT/VAE/text encoder)";
+  modelsButton.onclick = function(event) { event.stopPropagation(); loadImageModelPaths(imagePath); };
+  group.appendChild(legend);
+  group.appendChild(settingsButton);
+  group.appendChild(modelsButton);
+  return group;
 }
 
 function refreshGeneratedImages() {
@@ -983,15 +1094,9 @@ function refreshGeneratedImages() {
       refreshImageButton.textContent = 'Refresh';
       refreshImageButton.title = 're-fetch this image (fixes a thumbnail that only partially loaded)';
       refreshImageButton.onclick = function(event) { event.stopPropagation(); reloadThumbnailImageBustingCache(thumbnail, image.path); };
-      const loadSettingsButton = document.createElement('button');
-      loadSettingsButton.type = 'button';
-      loadSettingsButton.className = 'loadSettingsButton';
-      loadSettingsButton.textContent = 'Load';
-      loadSettingsButton.title = "load this image's settings into the form";
-      loadSettingsButton.onclick = function(event) { event.stopPropagation(); loadImageSettingsIntoForm(image.path); };
       thumbnailWrapper.appendChild(thumbnail);
       thumbnailWrapper.appendChild(refreshImageButton);
-      thumbnailWrapper.appendChild(loadSettingsButton);
+      thumbnailWrapper.appendChild(createImageLoadGroup(image.path));
       thumbsContainer.insertBefore(thumbnailWrapper, thumbsContainer.firstChild);
     }
   }).catch(function() {});

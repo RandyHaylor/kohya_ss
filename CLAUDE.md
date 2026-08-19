@@ -68,6 +68,23 @@ correct this file when you find it stale.
 - **`--prompt_count` / `--prompt_count_skip_first`**: usable-counted limit/pagination (skipped/unusable
   prompts don't count). **`--images_per_prompt N`**: N seed-incremented images per prompt in ONE model
   load — honored in **single `--prompt`** and **`--from_image_embed`** (NOT from_file/from_folder yet).
+- **Anima-Safe PAG** (`--pag` + `--pag_scale/--pag_block_indices/--pag_perturbation_strength/`
+  `--pag_head_indices/--pag_start_percent/--pag_end_percent/--pag_rescale/--pag_rescale_mode`): a **faithful
+  port** of https://github.com/iljung1106/comfyui-anima-safe-pag. On active steps it runs one extra
+  conditional forward with selected self-attention blocks blended toward the value path (`lerp(attn, v,
+  perturbation_strength)`, optional per-head) and steers the CFG result away from that weak prediction
+  (`guidance = (cond − pag) * scale`, std-rescaled). Perturbation hook lives in `library/anima_models.py`
+  (`apply_soft_pag_attention_perturbation`, `Attention.pag_perturbation`, `Anima.enable/disable_soft_pag_perturbation`);
+  the guidance/active-range/index helpers are pure in `anima_minimal_inference.py`
+  (`rescale_pag_guidance`, `pag_is_active_for_sigma`, `parse_pag_index_spec`). Defaults match the repo
+  (scale 4.0, block 18, strength 0.75, start 0.0, end 0.7, rescale 0.20, mode full). Costs an extra DiT
+  forward per active step (on top of CFG's two). GPU A/B render is the final proof — the pure helpers are
+  unit-tested but the perturbed forward is not. GUI: **Anima-Safe PAG** checkbox (default off) + fields.
+  PAG state (incl. `enabled`) is recorded under a **`pag`** key in the JSON settings sidecar
+  (`build_generation_settings_dict`); images made before PAG have no `pag` key. In the GUI, a generated
+  image's **Load** control is split into **Settings** (all gen params incl. PAG + LoRAs, NOT model paths)
+  and **Models** (dit/vae/text_encoder only). Loading Settings from an image with no `pag` key fills the
+  PAG defaults and leaves the checkbox unchecked.
 - **Samplers** (`--sampler`): `euler`, `er_sde`, `euler_ancestral`. **Schedulers** (`--scheduler`):
   `default`, `beta57`, `simple`. Defaults are **`er_sde` / `beta57`**. Sampler/scheduler ports live in
   `library/anima_er_sde_sampling.py` and are **faithful ports of ComfyUI** — verify against the ComfyUI
