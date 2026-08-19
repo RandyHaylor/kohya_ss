@@ -449,7 +449,7 @@ INDEX_HTML = """<!doctype html>
   .imageLoadGroup { position: absolute; bottom: 3px; right: 3px; margin: 0; padding: 0 3px 2px; border: 1px solid #999; border-radius: 3px; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; gap: 1px; }
   .imageLoadGroup > legend { font-size: 9px; color: #333; padding: 0 2px; }
   .imageLoadButton { font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; }
-  .refreshImageButton { position: absolute; bottom: 56px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
+  .refreshImageButton { position: absolute; bottom: 78px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
   #galleryEmpty { color: #777; font-style: italic; }
   #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
   #lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; }
@@ -553,6 +553,7 @@ INDEX_HTML = """<!doctype html>
     <legend>Load</legend>
     <button type="button" class="lightboxLoadButton" title="load this image's generation settings (not model paths)" onclick="loadImageGenerationSettings(currentLightboxImagePath)">Settings</button>
     <button type="button" class="lightboxLoadButton" title="load this image's model paths (DiT/VAE/text encoder)" onclick="loadImageModelPaths(currentLightboxImagePath)">Models</button>
+    <button type="button" class="lightboxLoadButton" title="load this image's LoRA stack (paths, strengths, enabled)" onclick="loadImageLoras(currentLightboxImagePath)">LoRAs</button>
   </fieldset>
   <button type="button" id="lightboxNextButton" class="lightboxNavButton" title="next image" onclick="event.stopPropagation(); showLightboxImageRelativeToCurrent(1)">&gt;</button>
 </div>
@@ -1000,8 +1001,17 @@ function applyModelPathsFromSettings(settings) {
   setFieldValueIfPresent('textEncoderPath', settings.text_encoder);
 }
 
-// Load the generation settings (prompt, size, steps, sampler, LoRAs, PAG, ...) but NOT the model paths.
-function applyGenerationSettingsExcludingModels(settings) {
+// Load the LoRA rows (path, strength, enabled) from an image's settings — separate from generation
+// settings and model paths, so the LoRA stack (and its strengths) can be loaded on its own.
+function applyLorasFromSettings(settings) {
+  document.getElementById('loraList').innerHTML = '';
+  (settings.loras || []).forEach(function(lora) {
+    addLoraRow(lora.path, String(lora.multiplier), lora.enabled !== false);  // preserve disabled rows
+  });
+}
+
+// Load the generation settings (prompt, size, steps, sampler, PAG, ...) but NOT the model paths or LoRAs.
+function applyGenerationSettingsExcludingModelsAndLoras(settings) {
   // These settings describe a single embedded-prompt render, so reproduce them in single-prompt mode
   // with the exact height/width (preset selector back to custom).
   document.getElementById('modeSelect').value = 'single';
@@ -1018,11 +1028,6 @@ function applyGenerationSettingsExcludingModels(settings) {
   setFieldValueIfPresent('seed', settings.seed);
   setFieldValueIfPresent('sampler', settings.sampler);
   setFieldValueIfPresent('scheduler', settings.scheduler);
-
-  document.getElementById('loraList').innerHTML = '';
-  (settings.loras || []).forEach(function(lora) {
-    addLoraRow(lora.path, String(lora.multiplier), lora.enabled !== false);  // preserve disabled rows
-  });
 
   applyPagSettingsToForm(settings);
 }
@@ -1041,8 +1046,9 @@ function fetchImageSettingsThen(imagePath, applySettingsCallback) {
     .catch(function(e) { alert('Failed to load settings: ' + e); });
 }
 
-function loadImageGenerationSettings(imagePath) { fetchImageSettingsThen(imagePath, applyGenerationSettingsExcludingModels); }
+function loadImageGenerationSettings(imagePath) { fetchImageSettingsThen(imagePath, applyGenerationSettingsExcludingModelsAndLoras); }
 function loadImageModelPaths(imagePath) { fetchImageSettingsThen(imagePath, applyModelPathsFromSettings); }
+function loadImageLoras(imagePath) { fetchImageSettingsThen(imagePath, applyLorasFromSettings); }
 
 // Build the small bordered "Load" group (Settings / Models buttons) overlaid on a gallery thumbnail.
 function createImageLoadGroup(imagePath) {
@@ -1062,9 +1068,16 @@ function createImageLoadGroup(imagePath) {
   modelsButton.textContent = 'Models';
   modelsButton.title = "load this image's model paths (DiT/VAE/text encoder)";
   modelsButton.onclick = function(event) { event.stopPropagation(); loadImageModelPaths(imagePath); };
+  const lorasButton = document.createElement('button');
+  lorasButton.type = 'button';
+  lorasButton.className = 'imageLoadButton';
+  lorasButton.textContent = 'LoRAs';
+  lorasButton.title = "load this image's LoRA stack (paths, strengths, enabled)";
+  lorasButton.onclick = function(event) { event.stopPropagation(); loadImageLoras(imagePath); };
   group.appendChild(legend);
   group.appendChild(settingsButton);
   group.appendChild(modelsButton);
+  group.appendChild(lorasButton);
   return group;
 }
 

@@ -82,9 +82,10 @@ correct this file when you find it stale.
   unit-tested but the perturbed forward is not. GUI: **Anima-Safe PAG** checkbox (default off) + fields.
   PAG state (incl. `enabled`) is recorded under a **`pag`** key in the JSON settings sidecar
   (`build_generation_settings_dict`); images made before PAG have no `pag` key. In the GUI, a generated
-  image's **Load** control is split into **Settings** (all gen params incl. PAG + LoRAs, NOT model paths)
-  and **Models** (dit/vae/text_encoder only). Loading Settings from an image with no `pag` key fills the
-  PAG defaults and leaves the checkbox unchecked.
+  image's **Load** control is split into three buttons: **Settings** (gen params incl. PAG, NOT model
+  paths, NOT LoRAs), **Models** (dit/vae/text_encoder only), and **LoRAs** (the LoRA stack — paths,
+  strengths, enabled). Loading Settings from an image with no `pag` key fills the PAG defaults and leaves
+  the checkbox unchecked.
 - **Samplers** (`--sampler`): `euler`, `er_sde`, `euler_ancestral`. **Schedulers** (`--scheduler`):
   `default`, `beta57`, `simple`. Defaults are **`er_sde` / `beta57`**. Sampler/scheduler ports live in
   `library/anima_er_sde_sampling.py` and are **faithful ports of ComfyUI** — verify against the ComfyUI
