@@ -431,6 +431,7 @@ INDEX_HTML = """<!doctype html>
   #logTail { white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 280px; overflow:auto; background:#111; color:#ddd; padding:8px; }
   .copyPasteFieldWrapper { position: relative; box-sizing: border-box; }
   .copyPasteControl { position: absolute; top: 3px; right: 2px; display: flex; flex-direction: column; gap: 1px; z-index: 3; }
+  .numberStepControl { position: absolute; top: 3px; right: 16px; display: flex; flex-direction: column; gap: 1px; z-index: 3; }
   .copyPasteButton { width: 12px; height: 12px; padding: 0; font-size: 9px; line-height: 12px; text-align: center; cursor: pointer; border: 1px solid #aaa; border-radius: 2px; background: rgba(255,255,255,0.85); color: #333; }
   .copyPasteButton:hover { background: #fff; }
   #galleryPanel { margin-top: 12px; border: 1px solid #ccc; }
@@ -439,6 +440,7 @@ INDEX_HTML = """<!doctype html>
   .thumbnailWrapper { position: relative; display: inline-block; line-height: 0; }
   .thumbnailWrapper img { height: 110px; width: auto; cursor: pointer; border: 1px solid #ccc; background: #fafafa; }
   .loadSettingsButton { position: absolute; bottom: 3px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
+  .refreshImageButton { position: absolute; bottom: 21px; right: 3px; font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; background: rgba(255,255,255,0.9); border: 1px solid #999; border-radius: 3px; }
   #galleryEmpty { color: #777; font-style: italic; }
   #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out; }
   #lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; }
@@ -453,11 +455,11 @@ INDEX_HTML = """<!doctype html>
 
 <div class="topbar">
   <button type="button" onclick="queueGeneration()">Queue Gen</button>
-  <input id="quantity" type="text" value="1" title="how many to queue" style="width:50px;flex:0 0 50px" onchange="normalizeQuantityField()">
+  <input id="quantity" type="text" value="1" title="how many to queue" data-number-step="1" style="width:74px;flex:0 0 74px" onchange="normalizeQuantityField()">
   <button type="button" onclick="postAction('/clear_queue')" title="drop pending queued gens; does not stop the running one">Clear Queue</button>
   <button type="button" onclick="postAction('/stop_current')">Stop Current</button>
   <button type="button" onclick="postAction('/stop_all')">Stop All</button>
-  <label class="cycleLabel" title="how many generations run at once; each loads its own full model copy, so raise only as far as VRAM allows">concurrent<input id="maxConcurrent" type="text" value="1" style="width:44px;flex:0 0 44px" onchange="applyMaxConcurrentChange()"></label>
+  <label class="cycleLabel" title="how many generations run at once; each loads its own full model copy, so raise only as far as VRAM allows">concurrent<input id="maxConcurrent" type="text" value="1" data-number-step="1" style="width:68px;flex:0 0 68px" onchange="applyMaxConcurrentChange()"></label>
   <label class="cycleLabel" title="serialize model-file disk reads across concurrent generations (one process reads models from disk at a time)"><input type="checkbox" id="serializeDiskLoads" checked> lock disk</label>
   <label class="cycleLabel" title="serialize GPU use across concurrent generations (one process on the GPU at a time)"><input type="checkbox" id="serializeGpuCompute" checked> lock GPU</label>
   <label class="cycleLabel" title="strict GPU lock: also serialize text-encode and VAE-decode, not just the denoise loop"><input type="checkbox" id="gpuLockStrict"> strict</label>
@@ -480,13 +482,13 @@ INDEX_HTML = """<!doctype html>
   <div class="field"><label>Scheduler</label><div class="row"><select id="scheduler"></select><label class="cycleLabel"><input type="checkbox" id="schedulerCycle"> cycle</label></div></div>
 
   <div class="field"><label>Resolution preset (fills H/W)</label><div class="row"><select id="resolutionPreset"></select><label class="cycleLabel"><input type="checkbox" id="resolutionCycle"> cycle</label></div></div>
-  <div class="field"><label>Height / Width (--image_size H W)</label><div class="row"><input id="imageHeight" type="text" value="1216" placeholder="H"><input id="imageWidth" type="text" value="832" placeholder="W"></div></div>
+  <div class="field"><label>Width / Height (passed to --image_size as H W)</label><div class="row"><input id="imageWidth" type="text" value="832" placeholder="W" data-number-step-snap="16"><input id="imageHeight" type="text" value="1216" placeholder="H" data-number-step-snap="16"></div></div>
 
-  <div class="field"><label>Steps + increment/gen</label><div class="row"><input id="inferSteps" type="text" value="50" onchange="normalizeIntField('inferSteps', 50)"><input id="inferStepsIncrement" class="increment" type="text" value="0" title="+/- steps after each Queue Gen"></div></div>
-  <div class="field"><label>CFG + increment/gen</label><div class="row"><input id="guidanceScale" type="text" value="3.5" onchange="normalizeFloatField('guidanceScale', 3.5)"><input id="guidanceScaleIncrement" class="increment" type="text" value="0" title="+/- CFG after each Queue Gen"></div></div>
+  <div class="field"><label>Steps + increment/gen</label><div class="row"><input id="inferSteps" type="text" value="50" data-number-step="1" onchange="normalizeIntField('inferSteps', 50)"><input id="inferStepsIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- steps after each Queue Gen"></div></div>
+  <div class="field"><label>CFG + increment/gen</label><div class="row"><input id="guidanceScale" type="text" value="3.5" data-number-step="0.1" onchange="normalizeFloatField('guidanceScale', 3.5)"><input id="guidanceScaleIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- CFG after each Queue Gen"></div></div>
 
-  <div class="field"><label>Flow shift + increment/gen (blank = default)</label><div class="row"><input id="flowShift" type="text" value="5.0"><input id="flowShiftIncrement" class="increment" type="text" value="0" title="+/- flow shift after each Queue Gen"></div></div>
-  <div class="field"><label>Seed + increment/gen (-1/blank = random)</label><div class="row"><input id="seed" type="text" value="42"><input id="seedIncrement" class="increment" type="text" value="0" title="+/- seed after each Queue Gen"></div></div>
+  <div class="field"><label>Flow shift + increment/gen (blank = default)</label><div class="row"><input id="flowShift" type="text" value="5.0" data-number-step="0.1"><input id="flowShiftIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- flow shift after each Queue Gen"></div></div>
+  <div class="field"><label>Seed + increment/gen (-1/blank = random)</label><div class="row"><input id="seed" type="text" value="42" data-number-step="1"><input id="seedIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- seed after each Queue Gen"></div></div>
 
   <div class="field span2"><label>DiT path (--dit; all-in-one checkpoint OK)</label><input id="ditPath" type="text" value="/media/aikenyon/WDRed16TB/models/anima/split_files/diffusion_models/anima-base-v1.0.safetensors"></div>
   <div class="field"><label>VAE (--vae, optional)</label><input id="vaePath" type="text" value="/media/aikenyon/WDRed16TB/models/anima/split_files/vae/qwen_image_vae.safetensors"></div>
@@ -498,7 +500,7 @@ INDEX_HTML = """<!doctype html>
   <div class="field span2"><label>LoRA test folder (--lora_test_folder): runs the whole gen once per .safetensors in the folder, on top of the LoRAs above (blank = off)</label>
     <div class="row">
       <input id="loraTestFolder" type="text" placeholder="/path/to/folder/of/loras (blank = off)">
-      <input id="loraTestMultiplier" class="increment" type="text" value="1" title="multiplier for each test LoRA">
+      <input id="loraTestMultiplier" class="increment" type="text" value="1" data-number-step="0.1" title="multiplier for each test LoRA">
     </div>
   </div>
 </div>
@@ -543,6 +545,7 @@ function addLoraRow(path, strength, enabled) {
   strengthInput.className = 'strength';
   strengthInput.placeholder = 'strength';
   strengthInput.value = strength || '1.0';
+  strengthInput.dataset.numberStep = '0.1';  // float field: up/down adjust by 0.1
   const removeButton = document.createElement('button');
   removeButton.type = 'button';
   removeButton.textContent = 'x';
@@ -602,7 +605,13 @@ function attachCopyPasteButtonsToField(field) {
   wrapper.appendChild(field);
   field.style.width = '100%';
   field.style.boxSizing = 'border-box';
-  field.style.paddingRight = '17px';  // keep text clear of the overlaid buttons
+  // Numeric fields also get an up/down column left of copy/paste, so they need extra right padding.
+  const isNumericField = Boolean(field.dataset.numberStep || field.dataset.numberStepSnap);
+  field.style.paddingRight = isNumericField ? '31px' : '17px';  // keep text clear of the overlaid buttons
+
+  if (isNumericField) {
+    attachUpDownStepButtonsToWrapper(wrapper, field);
+  }
 
   const control = document.createElement('span');
   control.className = 'copyPasteControl';
@@ -620,6 +629,28 @@ function attachCopyPasteButtonsToField(field) {
   pasteButton.onclick = function() { pasteClipboardIntoField(field); };
   control.appendChild(copyButton);
   control.appendChild(pasteButton);
+  wrapper.appendChild(control);
+}
+
+// Overlay a stacked up(^)/down(v) control just left of the copy/paste control, for numeric fields only.
+// The buttons step the field by its data-number-step (integer by 1, float by 0.1, etc.).
+function attachUpDownStepButtonsToWrapper(wrapper, field) {
+  const control = document.createElement('span');
+  control.className = 'numberStepControl';
+  const upButton = document.createElement('button');
+  upButton.type = 'button';
+  upButton.className = 'copyPasteButton';
+  upButton.textContent = '^';
+  upButton.title = 'increase';
+  upButton.onclick = function() { stepNumericField(field, 1); };
+  const downButton = document.createElement('button');
+  downButton.type = 'button';
+  downButton.className = 'copyPasteButton';
+  downButton.textContent = 'v';
+  downButton.title = 'decrease';
+  downButton.onclick = function() { stepNumericField(field, -1); };
+  control.appendChild(upButton);
+  control.appendChild(downButton);
   wrapper.appendChild(control);
 }
 
@@ -658,6 +689,33 @@ function parseIntWithDefault(rawValue, defaultValue) {
 function parseFloatWithDefault(rawValue, defaultValue) {
   const parsed = Number((rawValue || '').trim());
   return isFinite(parsed) ? parsed : defaultValue;
+}
+
+// Increase/decrease a numeric field (direction is +1 or -1), dispatching 'change' so any field
+// normalizer/handler still runs. A field with data-number-step-snap=N snaps to the next multiple of N
+// in the click direction (so an off-grid value like 513 lands on 528 up / 512 down, never below N).
+// Otherwise it steps by data-number-step: an integer step stays integer; a fractional step (0.1) steps
+// as a float, rounded to avoid float noise.
+function stepNumericField(field, direction) {
+  const snapModulus = Number(field.dataset.numberStepSnap);
+  if (isFinite(snapModulus) && snapModulus > 0) {
+    const current = parseIntWithDefault(field.value, snapModulus);
+    const snapped = (direction > 0)
+      ? Math.floor(current / snapModulus) * snapModulus + snapModulus
+      : Math.ceil(current / snapModulus) * snapModulus - snapModulus;
+    field.value = Math.max(snapModulus, snapped);  // never drop below one step (no zero/negative size)
+    field.dispatchEvent(new Event('change'));
+    return;
+  }
+  const stepValue = Number(field.dataset.numberStep);
+  if (!isFinite(stepValue) || stepValue === 0) { return; }
+  if (Number.isInteger(stepValue)) {
+    field.value = parseIntWithDefault(field.value, 0) + direction * stepValue;
+  } else {
+    const next = parseFloatWithDefault(field.value, 0) + direction * stepValue;
+    field.value = Math.round(next * 10000) / 10000;
+  }
+  field.dispatchEvent(new Event('change'));
 }
 
 function normalizeIntField(elementId, defaultValue) {
@@ -795,6 +853,14 @@ let galleryExpanded = false;
 const renderedGalleryImagePaths = new Set();
 let orderedGalleryImagePathsNewestFirst = [];  // display order (index 0 = newest); drives lightbox cycling
 let currentLightboxImagePath = null;
+let galleryImageCacheBustCounter = 0;  // bumped per manual refresh to force a fresh fetch of one thumbnail
+
+// Re-fetch a thumbnail's image with a unique cache-busting query param, so a thumbnail that only
+// partially loaded (image fetched mid-write) is replaced by the complete file.
+function reloadThumbnailImageBustingCache(thumbnail, imagePath) {
+  galleryImageCacheBustCounter += 1;
+  thumbnail.src = imageUrlForPath(imagePath) + '&cache_bust=' + galleryImageCacheBustCounter;
+}
 
 function toggleGalleryExpanded() {
   galleryExpanded = !galleryExpanded;
@@ -817,6 +883,22 @@ function closeLightbox() {
   document.getElementById('lightboxImage').src = '';
   currentLightboxImagePath = null;
 }
+
+// While the expanded (lightbox) view is open: Left = previous, Right/Space = next, Escape = close.
+function handleLightboxKeydown(event) {
+  if (currentLightboxImagePath === null) { return; }  // only act while the expanded view is open
+  if (event.key === 'ArrowLeft') {
+    showLightboxImageRelativeToCurrent(-1);
+    event.preventDefault();
+  } else if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Spacebar') {
+    showLightboxImageRelativeToCurrent(1);
+    event.preventDefault();
+  } else if (event.key === 'Escape') {
+    closeLightbox();
+    event.preventDefault();
+  }
+}
+document.addEventListener('keydown', handleLightboxKeydown);
 
 // Move the lightbox by offset positions in the current display order (wrapping around). Resolves the
 // current image by path each time so images arriving while open do not desync navigation.
@@ -895,6 +977,12 @@ function refreshGeneratedImages() {
       thumbnail.src = imageUrlForPath(image.path);
       thumbnail.title = image.name;
       thumbnail.onclick = function() { openLightbox(image.path); };
+      const refreshImageButton = document.createElement('button');
+      refreshImageButton.type = 'button';
+      refreshImageButton.className = 'refreshImageButton';
+      refreshImageButton.textContent = 'Refresh';
+      refreshImageButton.title = 're-fetch this image (fixes a thumbnail that only partially loaded)';
+      refreshImageButton.onclick = function(event) { event.stopPropagation(); reloadThumbnailImageBustingCache(thumbnail, image.path); };
       const loadSettingsButton = document.createElement('button');
       loadSettingsButton.type = 'button';
       loadSettingsButton.className = 'loadSettingsButton';
@@ -902,6 +990,7 @@ function refreshGeneratedImages() {
       loadSettingsButton.title = "load this image's settings into the form";
       loadSettingsButton.onclick = function(event) { event.stopPropagation(); loadImageSettingsIntoForm(image.path); };
       thumbnailWrapper.appendChild(thumbnail);
+      thumbnailWrapper.appendChild(refreshImageButton);
       thumbnailWrapper.appendChild(loadSettingsButton);
       thumbsContainer.insertBefore(thumbnailWrapper, thumbsContainer.firstChild);
     }

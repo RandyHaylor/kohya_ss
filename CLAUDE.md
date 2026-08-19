@@ -61,6 +61,10 @@ correct this file when you find it stale.
   every guarded span is disk-read free, so the GPU lock can't deadlock against the disk lock (a process
   never waits on the disk lock while holding the GPU lock). Uses the shared
   `hold_exclusive_cross_process_file_lock` context manager (same `flock` core as the disk lock).
+  In `process_batch_prompts` (single `--prompt` incl. `--images_per_prompt N`, and `--from_file`) the GPU
+  lock is held ACROSS the whole batch — the text-encode precompute loop and every image's generate/decode
+  as one block — so a multi-image batch keeps the GPU for all N images (no release between images) rather
+  than re-acquiring per image. The per-image locks nest under it via the re-entrant lock.
 - **`--prompt_count` / `--prompt_count_skip_first`**: usable-counted limit/pagination (skipped/unusable
   prompts don't count). **`--images_per_prompt N`**: N seed-incremented images per prompt in ONE model
   load — honored in **single `--prompt`** and **`--from_image_embed`** (NOT from_file/from_folder yet).
