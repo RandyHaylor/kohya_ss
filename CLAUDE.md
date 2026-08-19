@@ -85,7 +85,11 @@ correct this file when you find it stale.
   image's **Load** control is split into three buttons: **Settings** (gen params incl. PAG, NOT model
   paths, NOT LoRAs), **Models** (dit/vae/text_encoder only), and **LoRAs** (the LoRA stack — paths,
   strengths, enabled). Loading Settings from an image with no `pag` key fills the PAG defaults and leaves
-  the checkbox unchecked.
+  the checkbox unchecked. The PAG group has a **Recommended preset** dropdown (fills the fields, like the
+  resolution preset; does not toggle enable) and per-field tooltips. Only the **Repo Default** preset is
+  verified (Anima has 28 blocks 0-27, block 18 balanced); the other presets are research-based estimates
+  (general PAG guidance + repo block advice), NOT validated on Anima renders. Start %/End %/Rescale fields
+  clamp to [0,1] (`data-number-min/max` + `clampNumericFieldToBounds`, applied on change and on the stepper).
 - **Samplers** (`--sampler`): `euler`, `er_sde`, `euler_ancestral`. **Schedulers** (`--scheduler`):
   `default`, `beta57`, `simple`. Defaults are **`er_sde` / `beta57`**. Sampler/scheduler ports live in
   `library/anima_er_sde_sampling.py` and are **faithful ports of ComfyUI** — verify against the ComfyUI

@@ -504,19 +504,20 @@ INDEX_HTML = """<!doctype html>
 
   <fieldset class="pagGroup">
     <legend><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="pagEnabled" style="width:auto; margin:0;"> Anima-Safe PAG (perturbed attention guidance)</label></legend>
+    <div class="miniField" style="margin-bottom:4px"><label>Recommended preset (fills the fields below)</label><select id="pagPreset" title="Pick a recommended PAG setting combination to fill the fields below; 'custom' leaves them as-is. Choosing a preset does not toggle the enable checkbox." onchange="applyPagPreset()"></select></div>
     <div class="fourCol">
-      <div class="miniField"><label>PAG scale</label><input id="pagScale" type="text" value="4.0" data-number-step="0.1"></div>
-      <div class="miniField"><label>Block indices</label><input id="pagBlockIndices" type="text" value="18"></div>
-      <div class="miniField"><label>Perturb strength</label><input id="pagPerturbationStrength" type="text" value="0.75" data-number-step="0.1"></div>
-      <div class="miniField"><label>Start %</label><input id="pagStartPercent" type="text" value="0.0" data-number-step="0.1"></div>
-      <div class="miniField"><label>End %</label><input id="pagEndPercent" type="text" value="0.7" data-number-step="0.1"></div>
+      <div class="miniField"><label>PAG scale</label><input id="pagScale" type="text" value="4.0" data-number-step="0.1" title="PAG correction strength: how hard to steer the result away from the perturbed (weak) prediction. Higher = stronger effect; 0 disables the effect."></div>
+      <div class="miniField"><label>Block indices</label><input id="pagBlockIndices" type="text" value="18" title="Which DiT transformer block(s) to perturb: a single index, comma list, or range (e.g. 18, 18,20, or 18-22)."></div>
+      <div class="miniField"><label>Perturb strength</label><input id="pagPerturbationStrength" type="text" value="0.75" data-number-step="0.1" title="How far each perturbed block's self-attention output is blended toward its value/identity path (0..1). Higher = weaker 'guide' prediction, stronger guidance."></div>
+      <div class="miniField"><label>Start %</label><input id="pagStartPercent" type="text" value="0.0" data-number-step="0.1" data-number-min="0" data-number-max="1" onchange="clampNumericFieldToBounds(this)" title="Sampling-progress fraction (0..1) at which PAG turns ON. 0 = from the first step."></div>
+      <div class="miniField"><label>End %</label><input id="pagEndPercent" type="text" value="0.7" data-number-step="0.1" data-number-min="0" data-number-max="1" onchange="clampNumericFieldToBounds(this)" title="Sampling-progress fraction (0..1) at which PAG turns OFF. Should be >= start %."></div>
     </div>
     <fieldset class="pagAdvancedGroup">
       <legend>advanced</legend>
       <div class="fourCol">
-        <div class="miniField"><label>Head indices (blank=all)</label><input id="pagHeadIndices" type="text" value=""></div>
-        <div class="miniField"><label>Rescale</label><input id="pagRescale" type="text" value="0.2" data-number-step="0.1"></div>
-        <div class="miniField"><label>Rescale mode</label><select id="pagRescaleMode"><option value="full">full</option><option value="partial">partial</option></select></div>
+        <div class="miniField"><label>Head indices (blank=all)</label><input id="pagHeadIndices" type="text" value="" title="Optional attention-head filter for the perturbation: index, comma list, or range. Blank = perturb all heads."></div>
+        <div class="miniField"><label>Rescale</label><input id="pagRescale" type="text" value="0.2" data-number-step="0.1" data-number-min="0" data-number-max="1" onchange="clampNumericFieldToBounds(this)" title="Std-based guidance rescale (0..1) for contrast control; 0 = no rescaling, higher pulls guided-result contrast back toward the conditional prediction."></div>
+        <div class="miniField"><label>Rescale mode</label><select id="pagRescaleMode" title="Which statistic the rescale normalizes against: 'full' = the CFG result, 'partial' = the conditional prediction."><option value="full">full</option><option value="partial">partial</option></select></div>
       </div>
     </fieldset>
   </fieldset>
@@ -732,6 +733,19 @@ function parseFloatWithDefault(rawValue, defaultValue) {
 // in the click direction (so an off-grid value like 513 lands on 528 up / 512 down, never below N).
 // Otherwise it steps by data-number-step: an integer step stays integer; a fractional step (0.1) steps
 // as a float, rounded to avoid float noise.
+// Clamp a numeric field to its optional data-number-min / data-number-max bounds (blank/non-numeric is
+// left untouched). No-op when neither bound is set.
+function clampNumericFieldToBounds(field) {
+  const value = Number((field.value || '').trim());
+  if (!isFinite(value)) { return; }
+  const minValue = Number(field.dataset.numberMin);
+  const maxValue = Number(field.dataset.numberMax);
+  let clamped = value;
+  if (isFinite(minValue)) { clamped = Math.max(minValue, clamped); }
+  if (isFinite(maxValue)) { clamped = Math.min(maxValue, clamped); }
+  field.value = clamped;
+}
+
 function stepNumericField(field, direction) {
   const snapModulus = Number(field.dataset.numberStepSnap);
   if (isFinite(snapModulus) && snapModulus > 0) {
@@ -740,17 +754,17 @@ function stepNumericField(field, direction) {
       ? Math.floor(current / snapModulus) * snapModulus + snapModulus
       : Math.ceil(current / snapModulus) * snapModulus - snapModulus;
     field.value = Math.max(snapModulus, snapped);  // never drop below one step (no zero/negative size)
-    field.dispatchEvent(new Event('change'));
-    return;
-  }
-  const stepValue = Number(field.dataset.numberStep);
-  if (!isFinite(stepValue) || stepValue === 0) { return; }
-  if (Number.isInteger(stepValue)) {
-    field.value = parseIntWithDefault(field.value, 0) + direction * stepValue;
   } else {
-    const next = parseFloatWithDefault(field.value, 0) + direction * stepValue;
-    field.value = Math.round(next * 10000) / 10000;
+    const stepValue = Number(field.dataset.numberStep);
+    if (!isFinite(stepValue) || stepValue === 0) { return; }
+    if (Number.isInteger(stepValue)) {
+      field.value = parseIntWithDefault(field.value, 0) + direction * stepValue;
+    } else {
+      const next = parseFloatWithDefault(field.value, 0) + direction * stepValue;
+      field.value = Math.round(next * 10000) / 10000;
+    }
   }
+  clampNumericFieldToBounds(field);  // respect data-number-min/max (e.g. PAG start/end % in [0,1])
   field.dispatchEvent(new Event('change'));
 }
 
@@ -967,7 +981,47 @@ var PAG_FORM_FIELD_DEFAULTS = {
   start_percent: '0.0', end_percent: '0.7', rescale: '0.2', rescale_mode: 'full'
 };
 
+// Recommended PAG setting combinations for the preset dropdown. Only "Repo Default" is verified (the
+// node's shipped defaults; Anima has 28 blocks 0-27, block 18 is the balanced choice). The other presets
+// are research-based estimates (general PAG guidance + the repo's block advice), NOT tested on Anima
+// renders. Selecting a preset fills the fields below; it does not toggle the enable checkbox.
+var PAG_PRESETS = [
+  { label: '- custom (edit fields below) -', values: null },
+  { label: 'Repo Default (balanced detail)', values: { scale: '4.0', block_indices: '18', perturbation_strength: '0.75', head_indices: '', start_percent: '0.0', end_percent: '0.7', rescale: '0.2', rescale_mode: 'full' } },
+  { label: 'Subtle cleanup (light touch) [est.]', values: { scale: '2.5', block_indices: '20', perturbation_strength: '0.6', head_indices: '', start_percent: '0.0', end_percent: '0.6', rescale: '0.15', rescale_mode: 'full' } },
+  { label: 'Strong structure guidance [est.]', values: { scale: '6.0', block_indices: '16-20', perturbation_strength: '0.85', head_indices: '', start_percent: '0.0', end_percent: '0.8', rescale: '0.3', rescale_mode: 'full' } },
+  { label: 'Early composition (shape first) [est.]', values: { scale: '4.0', block_indices: '18', perturbation_strength: '0.75', head_indices: '', start_percent: '0.0', end_percent: '0.4', rescale: '0.2', rescale_mode: 'full' } },
+  { label: 'Late detail refinement (sharpen) [est.]', values: { scale: '3.0', block_indices: '20', perturbation_strength: '0.65', head_indices: '', start_percent: '0.5', end_percent: '0.9', rescale: '0.15', rescale_mode: 'full' } },
+  { label: 'Contrast-safe aggressive (partial rescale) [est.]', values: { scale: '5.0', block_indices: '18-20', perturbation_strength: '0.8', head_indices: '', start_percent: '0.0', end_percent: '0.7', rescale: '0.4', rescale_mode: 'partial' } }
+];
+
+function populatePagPresetOptions() {
+  const select = document.getElementById('pagPreset');
+  PAG_PRESETS.forEach(function(preset) {
+    const option = document.createElement('option');
+    option.textContent = preset.label;
+    select.appendChild(option);
+  });
+}
+
+// Fill the PAG fields from the selected preset (index maps 1:1 to PAG_PRESETS). 'custom' (index 0) is a
+// no-op. Does not change the enable checkbox, mirroring how the resolution preset only fills H/W.
+function applyPagPreset() {
+  const preset = PAG_PRESETS[document.getElementById('pagPreset').selectedIndex];
+  if (!preset || !preset.values) { return; }
+  const values = preset.values;
+  document.getElementById('pagScale').value = values.scale;
+  document.getElementById('pagBlockIndices').value = values.block_indices;
+  document.getElementById('pagPerturbationStrength').value = values.perturbation_strength;
+  document.getElementById('pagHeadIndices').value = values.head_indices;
+  document.getElementById('pagStartPercent').value = values.start_percent;
+  document.getElementById('pagEndPercent').value = values.end_percent;
+  document.getElementById('pagRescale').value = values.rescale;
+  document.getElementById('pagRescaleMode').value = values.rescale_mode;
+}
+
 function applyPagSettingsToForm(settings) {
+  document.getElementById('pagPreset').selectedIndex = 0;  // loaded values are 'custom', not a named preset
   const pag = settings.pag;
   if (pag) {
     document.getElementById('pagEnabled').checked = (pag.enabled === true);
@@ -1152,6 +1206,7 @@ fetch('/choices').then(function(r) { return r.json(); }).then(function(choices) 
 
 addLoraRow('/media/aikenyon/WDRed16TB/models/loras/div2k_anima/div2k_anima_v1-step00000360.safetensors', '1');
 applyModeVisibility();
+populatePagPresetOptions();
 attachCopyPasteButtonsToAllTextFields();
 
 fetch('/concurrency').then(function(r) { return r.json(); }).then(function(data) {
