@@ -12,11 +12,11 @@ INFERENCE_SCRIPT_RELATIVE_PATH = os.path.join("sd-scripts", "anima_minimal_infer
 
 # Used only as a fallback if the choices cannot be parsed out of the inference script source.
 FALLBACK_SAMPLER_CHOICES = ("euler", "er_sde", "euler_ancestral")
-FALLBACK_SCHEDULER_CHOICES = ("default", "beta57", "simple")
+FALLBACK_SCHEDULER_CHOICES = ("default", "beta57", "simple", "diffusers", "diffusers_dynamic")
 
 DEFAULT_SAVE_PATH = "./anima_out"
-DEFAULT_INFER_STEPS = 50
-DEFAULT_GUIDANCE_SCALE = 3.5
+DEFAULT_INFER_STEPS = 40
+DEFAULT_GUIDANCE_SCALE = 4.5
 
 # Standard ~1-megapixel aspect-ratio buckets (base 1024, all divisible by 32 as the inference script
 # requires). NOTE: this is NOT a verified "official Anima" list - no such list was found in the repo;
@@ -150,6 +150,18 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     if scheduler:
         command_argv += ["--scheduler", scheduler]
 
+    # base/max shift only affect the diffusers_dynamic scheduler; emit them only for it to keep other
+    # commands clean.
+    if scheduler == "diffusers_dynamic":
+        command_argv += [
+            "--dynamic_base_shift",
+            str(coerce_to_float_with_default(generation_request.get("dynamic_base_shift"), 0.5)),
+        ]
+        command_argv += [
+            "--dynamic_max_shift",
+            str(coerce_to_float_with_default(generation_request.get("dynamic_max_shift"), 0.9)),
+        ]
+
     # Image size is passed as HEIGHT WIDTH (the script's --image_size order). Both or neither.
     image_height = str(generation_request.get("image_height", "")).strip()
     image_width = str(generation_request.get("image_width", "")).strip()
@@ -221,6 +233,17 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
         pag_rescale_mode = str(generation_request.get("pag_rescale_mode", "")).strip()
         if pag_rescale_mode:
             command_argv += ["--pag_rescale_mode", pag_rescale_mode]
+
+        if generation_request.get("flow_matched_pag_enabled"):
+            command_argv += ["--flow_matched_pag"]
+            command_argv += [
+                "--flow_matched_pag_strength",
+                str(coerce_to_float_with_default(generation_request.get("flow_matched_pag_strength"), 1.0)),
+            ]
+            command_argv += [
+                "--flow_matched_pag_curve_exponent",
+                str(coerce_to_float_with_default(generation_request.get("flow_matched_pag_curve_exponent"), 1.0)),
+            ]
 
     command_argv += ["--save_path", save_path, "--output_type", "images"]
     return command_argv

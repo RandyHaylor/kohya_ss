@@ -491,14 +491,20 @@ INDEX_HTML = """<!doctype html>
 
   <div class="field"><label>Sampler (cycle advances each Queue Gen)</label><div class="row"><select id="sampler"></select><label class="cycleLabel"><input type="checkbox" id="samplerCycle"> cycle</label></div></div>
   <div class="field"><label>Scheduler</label><div class="row"><select id="scheduler"></select><label class="cycleLabel"><input type="checkbox" id="schedulerCycle"> cycle</label></div></div>
+  <div class="field span2"><div class="fourCol">
+    <div class="miniField"><label>Diffusers_Dynamic base shift</label><input id="dynamicBaseShift" type="text" value="0.5" data-number-step="0.05" title="diffusers_dynamic scheduler only: mu at 256 image tokens. Qwen-Image default 0.5. Ignored by other schedulers."></div>
+    <div class="miniField"><label>Diffusers_Dynamic max shift</label><input id="dynamicMaxShift" type="text" value="0.9" data-number-step="0.05" title="diffusers_dynamic scheduler only: mu at 8192 image tokens. Qwen-Image default 0.9. Ignored by other schedulers."></div>
+    <div class="miniField"><label>Diffusers flow shift + inc/gen</label><div class="row"><input id="flowShift" type="text" value="1.0" data-number-step="0.1"><input id="flowShiftIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- flow shift after each Queue Gen"></div></div>
+  </div>
+  <div style="font-size:11px; color:#666; margin-top:2px;">Flow shift only affects the non-dynamic schedulers (default / beta57 / simple / diffusers); diffusers_dynamic computes its shift from image resolution and ignores it.</div>
+  </div>
 
   <div class="field"><label>Resolution preset (fills H/W)</label><div class="row"><select id="resolutionPreset"></select><label class="cycleLabel"><input type="checkbox" id="resolutionCycle"> cycle</label></div></div>
   <div class="field"><label>Width / Height (passed to --image_size as H W)</label><div class="row"><input id="imageWidth" type="text" value="832" placeholder="W" data-number-step-snap="16"><input id="imageHeight" type="text" value="1216" placeholder="H" data-number-step-snap="16"></div></div>
 
   <div class="field span2"><div class="fourCol">
-    <div class="miniField"><label>Steps + inc/gen</label><div class="row"><input id="inferSteps" type="text" value="50" data-number-step="1" onchange="normalizeIntField('inferSteps', 50)"><input id="inferStepsIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- steps after each Queue Gen"></div></div>
-    <div class="miniField"><label>CFG + inc/gen</label><div class="row"><input id="guidanceScale" type="text" value="3.5" data-number-step="0.1" onchange="normalizeFloatField('guidanceScale', 3.5)"><input id="guidanceScaleIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- CFG after each Queue Gen"></div></div>
-    <div class="miniField"><label>Flow shift + inc/gen</label><div class="row"><input id="flowShift" type="text" value="5.0" data-number-step="0.1"><input id="flowShiftIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- flow shift after each Queue Gen"></div></div>
+    <div class="miniField"><label>Steps + inc/gen</label><div class="row"><input id="inferSteps" type="text" value="40" data-number-step="1" onchange="normalizeIntField('inferSteps', 40)"><input id="inferStepsIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- steps after each Queue Gen"></div></div>
+    <div class="miniField"><label>CFG + inc/gen</label><div class="row"><input id="guidanceScale" type="text" value="4.5" data-number-step="0.1" onchange="normalizeFloatField('guidanceScale', 4.5)"><input id="guidanceScaleIncrement" class="increment" type="text" value="0" data-number-step="0.1" title="+/- CFG after each Queue Gen"></div></div>
     <div class="miniField"><label>Seed + inc/gen (-1=random)</label><div class="row"><input id="seed" type="text" value="42" data-number-step="1"><input id="seedIncrement" class="increment" type="text" value="0" data-number-step="1" title="+/- seed after each Queue Gen"></div></div>
   </div></div>
 
@@ -519,6 +525,13 @@ INDEX_HTML = """<!doctype html>
         <div class="miniField"><label>Rescale</label><input id="pagRescale" type="text" value="0.2" data-number-step="0.1" data-number-min="0" data-number-max="1" onchange="clampNumericFieldToBounds(this)" title="Std-based guidance rescale (0..1) for contrast control; 0 = no rescaling, higher pulls guided-result contrast back toward the conditional prediction."></div>
         <div class="miniField"><label>Rescale mode</label><select id="pagRescaleMode" title="Which statistic the rescale normalizes against: 'full' = the CFG result, 'partial' = the conditional prediction."><option value="full">full</option><option value="partial">partial</option></select></div>
       </div>
+      <fieldset class="pagAdvancedGroup" style="margin-top:6px;">
+        <legend><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="flowMatchedPagEnabled" style="width:auto; margin:0;" checked> FlowMatched PAG (scale PAG across the denoise)</label></legend>
+        <div class="fourCol">
+          <div class="miniField"><label>Strength</label><input id="flowMatchedPagStrength" type="text" value="1.0" data-number-step="0.1" title="Multiplier on the FlowMatched PAG scalar: 1.0 = scalar as-is, 0.5 = half influence, 2.0 = double. Project heuristic (no published reference)."></div>
+          <div class="miniField"><label>Curve exponent</label><input id="flowMatchedPagCurveExponent" type="text" value="1.0" data-number-step="0.1" title="Shapes the scalar as (sigma/sigma_max)**exponent: 1.0 = linear, <1 keeps PAG stronger later, >1 concentrates it at high noise."></div>
+        </div>
+      </fieldset>
     </fieldset>
   </fieldset>
 
@@ -820,9 +833,9 @@ function cycleResolutionForNextGen() {
 }
 
 function applyPostQueueIncrementsAndCycles() {
-  applyIntIncrementForNextGen('inferSteps', 'inferStepsIncrement', 50);
-  applyFloatIncrementForNextGen('guidanceScale', 'guidanceScaleIncrement', 3.5);
-  applyFloatIncrementForNextGen('flowShift', 'flowShiftIncrement', 5.0);
+  applyIntIncrementForNextGen('inferSteps', 'inferStepsIncrement', 40);
+  applyFloatIncrementForNextGen('guidanceScale', 'guidanceScaleIncrement', 4.5);
+  applyFloatIncrementForNextGen('flowShift', 'flowShiftIncrement', 1.0);
   applyIntIncrementForNextGen('seed', 'seedIncrement', 42);
   if (document.getElementById('samplerCycle').checked) { cycleSelectForNextGen('sampler'); }
   if (document.getElementById('schedulerCycle').checked) { cycleSelectForNextGen('scheduler'); }
@@ -851,9 +864,11 @@ function buildRequest() {
     scheduler: document.getElementById('scheduler').value,
     image_height: document.getElementById('imageHeight').value,
     image_width: document.getElementById('imageWidth').value,
-    infer_steps: parseIntWithDefault(document.getElementById('inferSteps').value, 50),
-    guidance_scale: parseFloatWithDefault(document.getElementById('guidanceScale').value, 3.5),
+    infer_steps: parseIntWithDefault(document.getElementById('inferSteps').value, 40),
+    guidance_scale: parseFloatWithDefault(document.getElementById('guidanceScale').value, 4.5),
     flow_shift: document.getElementById('flowShift').value,
+    dynamic_base_shift: document.getElementById('dynamicBaseShift').value,
+    dynamic_max_shift: document.getElementById('dynamicMaxShift').value,
     seed: document.getElementById('seed').value,
     dit_path: document.getElementById('ditPath').value,
     vae_path: document.getElementById('vaePath').value,
@@ -876,7 +891,10 @@ function buildRequest() {
     pag_start_percent: document.getElementById('pagStartPercent').value,
     pag_end_percent: document.getElementById('pagEndPercent').value,
     pag_rescale: document.getElementById('pagRescale').value,
-    pag_rescale_mode: document.getElementById('pagRescaleMode').value
+    pag_rescale_mode: document.getElementById('pagRescaleMode').value,
+    flow_matched_pag_enabled: document.getElementById('flowMatchedPagEnabled').checked,
+    flow_matched_pag_strength: document.getElementById('flowMatchedPagStrength').value,
+    flow_matched_pag_curve_exponent: document.getElementById('flowMatchedPagCurveExponent').value
   };
 }
 
@@ -985,7 +1003,8 @@ function setFieldValueIfPresent(elementId, value) {
 // Repo defaults for the PAG form fields, used when a loaded image predates PAG (has no 'pag' settings).
 var PAG_FORM_FIELD_DEFAULTS = {
   scale: '4.0', block_indices: '18', perturbation_strength: '0.75', head_indices: '',
-  start_percent: '0.0', end_percent: '0.7', rescale: '0.2', rescale_mode: 'full'
+  start_percent: '0.0', end_percent: '0.7', rescale: '0.2', rescale_mode: 'full',
+  flow_matched_strength: '1.0', flow_matched_curve_exponent: '1.0'
 };
 
 // Recommended PAG setting combinations for the preset dropdown. Only "Repo Default" is verified (the
@@ -1040,6 +1059,10 @@ function applyPagSettingsToForm(settings) {
     setFieldValueIfPresent('pagEndPercent', pag.end_percent);
     setFieldValueIfPresent('pagRescale', pag.rescale);
     setFieldValueIfPresent('pagRescaleMode', pag.rescale_mode);
+    // FlowMatched PAG (absent on sidecars predating it): default to off / neutral.
+    document.getElementById('flowMatchedPagEnabled').checked = (pag.flow_matched_enabled === true);
+    document.getElementById('flowMatchedPagStrength').value = (pag.flow_matched_strength == null) ? PAG_FORM_FIELD_DEFAULTS.flow_matched_strength : pag.flow_matched_strength;
+    document.getElementById('flowMatchedPagCurveExponent').value = (pag.flow_matched_curve_exponent == null) ? PAG_FORM_FIELD_DEFAULTS.flow_matched_curve_exponent : pag.flow_matched_curve_exponent;
   } else {
     // Image predates PAG: load PAG defaults but leave the box unchecked (its PAG state is unknown).
     document.getElementById('pagEnabled').checked = false;
@@ -1051,6 +1074,9 @@ function applyPagSettingsToForm(settings) {
     document.getElementById('pagEndPercent').value = PAG_FORM_FIELD_DEFAULTS.end_percent;
     document.getElementById('pagRescale').value = PAG_FORM_FIELD_DEFAULTS.rescale;
     document.getElementById('pagRescaleMode').value = PAG_FORM_FIELD_DEFAULTS.rescale_mode;
+    document.getElementById('flowMatchedPagEnabled').checked = false;
+    document.getElementById('flowMatchedPagStrength').value = PAG_FORM_FIELD_DEFAULTS.flow_matched_strength;
+    document.getElementById('flowMatchedPagCurveExponent').value = PAG_FORM_FIELD_DEFAULTS.flow_matched_curve_exponent;
   }
 }
 
@@ -1086,6 +1112,8 @@ function applyGenerationSettingsExcludingModelsAndLoras(settings) {
   setFieldValueIfPresent('inferSteps', settings.steps);
   setFieldValueIfPresent('guidanceScale', settings.guidance_scale);
   setFieldValueIfPresent('flowShift', settings.flow_shift);
+  setFieldValueIfPresent('dynamicBaseShift', settings.dynamic_base_shift);
+  setFieldValueIfPresent('dynamicMaxShift', settings.dynamic_max_shift);
   setFieldValueIfPresent('seed', settings.seed);
   setFieldValueIfPresent('sampler', settings.sampler);
   setFieldValueIfPresent('scheduler', settings.scheduler);
@@ -1186,7 +1214,7 @@ fetch('/choices').then(function(r) { return r.json(); }).then(function(choices) 
     const option = document.createElement('option'); option.value = name; option.textContent = name; schedulerSelect.appendChild(option);
   });
   if ((choices.samplers || []).indexOf('er_sde') >= 0) { samplerSelect.value = 'er_sde'; }
-  if ((choices.schedulers || []).indexOf('beta57') >= 0) { schedulerSelect.value = 'beta57'; }
+  if ((choices.schedulers || []).indexOf('diffusers_dynamic') >= 0) { schedulerSelect.value = 'diffusers_dynamic'; }
 
   const resolutionSelect = document.getElementById('resolutionPreset');
   const customOption = document.createElement('option');

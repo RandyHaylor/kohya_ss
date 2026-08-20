@@ -126,6 +126,28 @@ def test_build_full_command_includes_all_provided_fields():
     assert argv[lora_index + 1 : lora_index + 5] == ["/l/a.safetensors", "0.8", "/l/b.safetensors", "1.0"]
 
 
+def test_dynamic_shift_flags_emitted_for_dynamic_scheduler():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "scheduler": "diffusers_dynamic",
+            "dynamic_base_shift": "0.4",
+            "dynamic_max_shift": "1.1",
+        }
+    )
+    assert argv[argv.index("--dynamic_base_shift") + 1] == "0.4"
+    assert argv[argv.index("--dynamic_max_shift") + 1] == "1.1"
+
+
+def test_dynamic_shift_flags_absent_for_non_dynamic_scheduler():
+    argv = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "scheduler": "diffusers", "dynamic_base_shift": "0.4"}
+    )
+    assert "--dynamic_base_shift" not in argv
+    assert "--dynamic_max_shift" not in argv
+
+
 def test_lora_rows_with_blank_path_are_skipped_and_strength_defaults():
     argv = build_inference_command(
         {
@@ -315,6 +337,42 @@ def test_pag_head_indices_omitted_when_blank():
     )
     assert "--pag" in argv
     assert "--pag_head_indices" not in argv  # blank = all heads, flag omitted
+
+
+def test_flow_matched_pag_flags_emitted_when_enabled():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "pag_enabled": True,
+            "flow_matched_pag_enabled": True,
+            "flow_matched_pag_strength": "0.5",
+            "flow_matched_pag_curve_exponent": "2.0",
+        }
+    )
+    assert "--flow_matched_pag" in argv
+    assert argv[argv.index("--flow_matched_pag_strength") + 1] == "0.5"
+    assert argv[argv.index("--flow_matched_pag_curve_exponent") + 1] == "2.0"
+
+
+def test_flow_matched_pag_flags_absent_when_pag_disabled():
+    # FlowMatched PAG scales PAG, so it only emits inside the pag_enabled block.
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "pag_enabled": False,
+            "flow_matched_pag_enabled": True,
+        }
+    )
+    assert "--flow_matched_pag" not in argv
+
+
+def test_flow_matched_pag_flags_absent_when_disabled():
+    argv = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "pag_enabled": True, "flow_matched_pag_enabled": False}
+    )
+    assert "--flow_matched_pag" not in argv
 
 
 def test_lora_test_folder_emitted_with_default_multiplier():
@@ -557,12 +615,14 @@ def test_load_choices_reads_from_real_inference_script():
     choices = load_sampler_and_scheduler_choices(repo_root)
     assert "euler_ancestral" in choices["samplers"]
     assert "simple" in choices["schedulers"]
+    assert "diffusers" in choices["schedulers"]
+    assert "diffusers_dynamic" in choices["schedulers"]
 
 
 def test_load_choices_falls_back_when_script_missing(tmp_path):
     choices = load_sampler_and_scheduler_choices(str(tmp_path))
     assert choices["samplers"] == ["euler", "er_sde", "euler_ancestral"]
-    assert choices["schedulers"] == ["default", "beta57", "simple"]
+    assert choices["schedulers"] == ["default", "beta57", "simple", "diffusers", "diffusers_dynamic"]
 
 
 if __name__ == "__main__":
