@@ -47,7 +47,8 @@ ANIMA_RESOLUTION_PRESETS = [
 def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     """Build the argv list for one single-prompt (embedded) generation.
 
-    Required in the request: dit_path and positive_prompt. save_path falls back to DEFAULT_SAVE_PATH.
+    Required in the request: positive_prompt, and dit_path unless an enabled dit_test_folder supplies the
+    DiT(s). save_path falls back to DEFAULT_SAVE_PATH.
     vae_path / text_encoder_path are omitted when blank (e.g. an all-in-one --dit checkpoint). loras is
     a list of {"path", "strength"} dicts; blank-path rows are skipped. Only the fields the GUI exposes
     are emitted; everything else uses the inference script's own defaults (one image per run).
@@ -58,10 +59,17 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     save_path = str(generation_request.get("save_path", "")).strip() or DEFAULT_SAVE_PATH
     mode = str(generation_request.get("mode", "single")).strip() or "single"
 
-    if not dit_path:
-        raise ValueError("dit_path is required")
+    # A DiT test sweep supplies the DiT(s) from a folder, so --dit may be omitted in that case.
+    dit_test_folder = str(generation_request.get("dit_test_folder", "")).strip()
+    dit_test_folder_enabled = bool(generation_request.get("dit_test_folder_enabled", True))
+    dit_test_sweep_active = bool(dit_test_folder and dit_test_folder_enabled)
 
-    command_argv: List[str] = ["uv", "run", INFERENCE_SCRIPT_RELATIVE_PATH, "--dit", dit_path]
+    if not dit_path and not dit_test_sweep_active:
+        raise ValueError("dit_path is required unless a DiT test folder is set")
+
+    command_argv: List[str] = ["uv", "run", INFERENCE_SCRIPT_RELATIVE_PATH]
+    if dit_path:
+        command_argv += ["--dit", dit_path]
 
     vae_path = str(generation_request.get("vae_path", "")).strip()
     if vae_path:
@@ -92,9 +100,15 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
     # LoRA test sweep: run the whole generation once per top-level .safetensors in this folder, on top
     # of the fixed LoRAs above. Multiplier defaults to 1.0.
     lora_test_folder = str(generation_request.get("lora_test_folder", "")).strip()
-    if lora_test_folder:
+    lora_test_folder_enabled = bool(generation_request.get("lora_test_folder_enabled", True))
+    if lora_test_folder and lora_test_folder_enabled:
         lora_test_multiplier = str(generation_request.get("lora_test_multiplier", "")).strip() or "1.0"
         command_argv += ["--lora_test_folder", lora_test_folder, lora_test_multiplier]
+
+    # DiT test sweep: run the whole generation once per top-level .safetensors DiT in this folder (plus
+    # --dit if distinct). If a LoRA test folder is also set, the two sweeps nest (each DiT x each LoRA).
+    if dit_test_sweep_active:
+        command_argv += ["--dit_test_folder", dit_test_folder]
 
     # Number of images per run, seed-incremented in a single model load (the GUI 'quantity' maps here).
     images_per_prompt = coerce_to_int_with_default(generation_request.get("images_per_prompt"), 1)

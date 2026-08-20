@@ -343,6 +343,90 @@ def test_lora_test_folder_omitted_when_blank():
     assert "--lora_test_folder" not in argv
 
 
+def test_dit_test_folder_emitted_when_set():
+    argv = build_inference_command(
+        {"dit_path": "/m/dit.safetensors", "positive_prompt": "p", "dit_test_folder": "/dits/_totest"}
+    )
+    index = argv.index("--dit_test_folder")
+    assert argv[index + 1] == "/dits/_totest"
+
+
+def test_dit_test_folder_omitted_when_blank():
+    argv = build_inference_command({"dit_path": "/m/dit.safetensors", "positive_prompt": "p"})
+    assert "--dit_test_folder" not in argv
+
+
+def test_dit_path_may_be_empty_when_dit_test_folder_set():
+    argv = build_inference_command(
+        {"dit_path": "", "positive_prompt": "p", "dit_test_folder": "/dits/_totest"}
+    )
+    assert "--dit" not in argv
+    index = argv.index("--dit_test_folder")
+    assert argv[index + 1] == "/dits/_totest"
+
+
+def test_dit_path_required_when_no_dit_test_folder():
+    try:
+        build_inference_command({"dit_path": "", "positive_prompt": "p"})
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when dit_path is empty and no DiT test folder is set")
+
+
+def test_dit_path_required_when_dit_test_folder_disabled():
+    try:
+        build_inference_command(
+            {
+                "dit_path": "",
+                "positive_prompt": "p",
+                "dit_test_folder": "/dits/_totest",
+                "dit_test_folder_enabled": False,
+            }
+        )
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when dit_path is empty and the DiT test folder is disabled")
+
+
+def test_dit_test_folder_omitted_when_disabled():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "dit_test_folder": "/dits/_totest",
+            "dit_test_folder_enabled": False,
+        }
+    )
+    assert "--dit_test_folder" not in argv
+
+
+def test_lora_test_folder_omitted_when_disabled():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "lora_test_folder": "/loras/_totest",
+            "lora_test_folder_enabled": False,
+        }
+    )
+    assert "--lora_test_folder" not in argv
+
+
+def test_dit_test_folder_nested_with_lora_test_folder():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "dit_test_folder": "/dits/_totest",
+            "lora_test_folder": "/loras/_totest",
+        }
+    )
+    dit_index = argv.index("--dit_test_folder")
+    assert argv[dit_index + 1] == "/dits/_totest"
+    lora_index = argv.index("--lora_test_folder")
+    assert argv[lora_index + 1 : lora_index + 3] == ["/loras/_totest", "1.0"]
+
+
 def test_disabled_lora_rows_are_excluded():
     argv = build_inference_command(
         {

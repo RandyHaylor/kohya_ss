@@ -529,11 +529,15 @@ INDEX_HTML = """<!doctype html>
 
   <div class="field span2"><label>LoRAs</label><div id="loraList"></div><button type="button" onclick="addLoraRow()" style="margin-top:4px;align-self:flex-start;">Add LoRA</button></div>
 
-  <div class="field span2"><label>LoRA test folder (--lora_test_folder): runs the whole gen once per .safetensors in the folder, on top of the LoRAs above (blank = off)</label>
+  <div class="field span2"><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="loraTestFolderEnabled" style="width:auto; margin:0;"> LoRA test folder (--lora_test_folder): runs the whole gen once per .safetensors in the folder, on top of the LoRAs above</label>
     <div class="row">
-      <input id="loraTestFolder" type="text" placeholder="/path/to/folder/of/loras (blank = off)">
+      <input id="loraTestFolder" type="text" placeholder="/path/to/folder/of/loras">
       <input id="loraTestMultiplier" class="increment" type="text" value="1" data-number-step="0.1" title="multiplier for each test LoRA">
     </div>
+  </div>
+
+  <div class="field span2"><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="ditTestFolderEnabled" style="width:auto; margin:0;"> DiT test folder (--dit_test_folder): runs the whole gen once per .safetensors DiT in the folder; --dit above is added too (deduped). Nests with the LoRA test folder</label>
+    <input id="ditTestFolder" type="text" placeholder="/path/to/folder/of/dits">
   </div>
 </div>
 
@@ -857,7 +861,10 @@ function buildRequest() {
     save_path: document.getElementById('savePath').value,
     loras: collectLoras(),
     lora_test_folder: document.getElementById('loraTestFolder').value,
+    lora_test_folder_enabled: document.getElementById('loraTestFolderEnabled').checked,
     lora_test_multiplier: document.getElementById('loraTestMultiplier').value,
+    dit_test_folder: document.getElementById('ditTestFolder').value,
+    dit_test_folder_enabled: document.getElementById('ditTestFolderEnabled').checked,
     serialize_disk_loads: document.getElementById('serializeDiskLoads').checked,
     serialize_gpu_compute: document.getElementById('serializeGpuCompute').checked,
     gpu_lock_strict: document.getElementById('gpuLockStrict').checked,
