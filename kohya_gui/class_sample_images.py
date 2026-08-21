@@ -112,11 +112,20 @@ class SampleImages:
     def __init__(
         self,
         config: KohyaSSGUIConfig = {},
+        include_external_inference_sampling_controls: bool = False,
     ):
         """
         Initializes the SampleImages class.
+
+        include_external_inference_sampling_controls adds the controls that route sample generation
+        to sd-scripts/anima_minimal_inference.py. Those args exist only in the Anima training
+        parser and are wired only through the LoRA tab, so the other tabs sharing this accordion
+        leave them out rather than showing a control nothing reads.
         """
         self.config = config
+        self.include_external_inference_sampling_controls = (
+            include_external_inference_sampling_controls
+        )
 
         self.initialize_accordion()
 
@@ -168,4 +177,24 @@ class SampleImages:
                 placeholder="masterpiece, best quality, 1girl, in white shirts, upper body, looking at viewer, simple background --n low quality, worst quality, bad anatomy,bad composition, poor, low effort --w 768 --h 768 --d 1 --l 7.5 --s 28",
                 info="One prompt per line. Flags: --w width, --h height, --d seed, --l cfg scale, --s steps, --n negative. Edit prompt.txt in samples dir to update live.",
                 value=self.config.get("samples.sample_prompts", ""),
+            )
+        if not self.include_external_inference_sampling_controls:
+            return
+
+        with gr.Row():
+            self.sample_via_external_inference = gr.Checkbox(
+                label="Send sample prompts to anima_minimal_inference.py",
+                value=self.config.get("samples.sample_via_external_inference", False),
+                interactive=True,
+                info="Anima only. Each prompt line is used as the complete command line for "
+                "anima_minimal_inference.py (models, prompt, sampler, scheduler, PAG, size, steps, "
+                "--output_type images). Do not include --lora_weight or --save_path: the newest saved "
+                "LoRA checkpoint and the sample output folder are added automatically.",
+            )
+            self.sample_external_parallel = gr.Checkbox(
+                label="Run anima_minimal_inference.py in parallel to training",
+                value=self.config.get("samples.sample_external_parallel", False),
+                interactive=True,
+                info="Launch each sample as a fire-and-forget subprocess so training does not pause. "
+                "The sample loads its own copy of the model and shares the GPU with training.",
             )

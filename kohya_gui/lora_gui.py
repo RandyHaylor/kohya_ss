@@ -252,6 +252,8 @@ def save_configuration(
     sample_every_n_epochs,
     sample_sampler,
     sample_prompts,
+    sample_via_external_inference,
+    sample_external_parallel,
     down_lr_weight,
     mid_lr_weight,
     up_lr_weight,
@@ -599,6 +601,8 @@ def open_configuration(
     sample_every_n_epochs,
     sample_sampler,
     sample_prompts,
+    sample_via_external_inference,
+    sample_external_parallel,
     down_lr_weight,
     mid_lr_weight,
     up_lr_weight,
@@ -1282,6 +1286,8 @@ def train_model(
     sample_every_n_epochs,
     sample_sampler,
     sample_prompts,
+    sample_via_external_inference,
+    sample_external_parallel,
     down_lr_weight,
     mid_lr_weight,
     up_lr_weight,
@@ -2313,6 +2319,8 @@ def train_model(
         ),
         "sample_prompts": create_prompt_file(sample_prompts, output_dir),
         "sample_sampler": sample_sampler,
+        "sample_via_external_inference": sample_via_external_inference,
+        "sample_external_parallel": sample_external_parallel,
         "save_every_n_epochs": (
             save_every_n_epochs if save_every_n_epochs != 0 else None
         ),
@@ -3551,7 +3559,9 @@ def lora_tab(
                 )
 
             with gr.Accordion("Samples", open=False, elem_classes="samples_background"):
-                sample = SampleImages(config=config)
+                sample = SampleImages(
+                    config=config, include_external_inference_sampling_controls=True
+                )
 
             global huggingface
             with gr.Accordion(
@@ -3782,6 +3792,8 @@ def lora_tab(
             ("sample_every_n_epochs", sample.sample_every_n_epochs),
             ("sample_sampler", sample.sample_sampler),
             ("sample_prompts", sample.sample_prompts),
+            ("sample_via_external_inference", sample.sample_via_external_inference),
+            ("sample_external_parallel", sample.sample_external_parallel),
             ("down_lr_weight", down_lr_weight),
             ("mid_lr_weight", mid_lr_weight),
             ("up_lr_weight", up_lr_weight),

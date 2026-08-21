@@ -20,8 +20,9 @@ from unittest.mock import patch
 import gradio as gr
 import toml
 
-from kohya_gui import lora_gui
+from kohya_gui import dreambooth_gui, finetune_gui, lora_gui, textual_inversion_gui
 from kohya_gui.class_gui_config import KohyaSSGUIConfig
+from kohya_gui.class_sample_images import SampleImages
 from conftest import (
     build_train_model_kwargs,
     mock_executor,
@@ -254,6 +255,20 @@ class TestTrainModelConfigOutput(unittest.TestCase):
         config = self._run_and_load_toml({"lowvram": True})
         self.assertNotIn("lowvram", config)
 
+    def test_external_inference_sampling_flags_emitted_when_checked(self):
+        config = self._run_and_load_toml(
+            {"sample_via_external_inference": True, "sample_external_parallel": True}
+        )
+        self.assertTrue(config["sample_via_external_inference"])
+        self.assertTrue(config["sample_external_parallel"])
+
+    def test_external_inference_sampling_flags_omitted_when_unchecked(self):
+        config = self._run_and_load_toml(
+            {"sample_via_external_inference": False, "sample_external_parallel": False}
+        )
+        self.assertNotIn("sample_via_external_inference", config)
+        self.assertNotIn("sample_external_parallel", config)
+
 
 class TestLoraTrainInpainting(unittest.TestCase):
     """GH issue #3527: inpainting model training support (SD1.5/SDXL).
@@ -438,6 +453,45 @@ class TestChromaModelType(unittest.TestCase):
         )
         config = run_train_model_and_load_saved_json(lora_gui, kwargs)
         self.assertEqual(config.get("model_type"), "chroma")
+
+
+class TestExternalInferenceSamplingControlsAreLoraTabOnly(unittest.TestCase):
+    """The external-inference sample controls drive Anima-only args wired solely through the LoRA
+    tab, so the shared SampleImages accordion must not render them for the tabs that cannot use
+    them (a visible control nothing reads would look functional and do nothing).
+    """
+
+    EXTERNAL_INFERENCE_CONTROL_ATTRIBUTE_NAMES = (
+        "sample_via_external_inference",
+        "sample_external_parallel",
+    )
+
+    def test_controls_absent_by_default(self):
+        with gr.Blocks():
+            shared_sample_section = SampleImages(config=KohyaSSGUIConfig())
+        for attribute_name in self.EXTERNAL_INFERENCE_CONTROL_ATTRIBUTE_NAMES:
+            self.assertFalse(hasattr(shared_sample_section, attribute_name))
+
+    def test_controls_present_when_requested(self):
+        with gr.Blocks():
+            lora_sample_section = SampleImages(
+                config=KohyaSSGUIConfig(), include_external_inference_sampling_controls=True
+            )
+        for attribute_name in self.EXTERNAL_INFERENCE_CONTROL_ATTRIBUTE_NAMES:
+            self.assertTrue(hasattr(lora_sample_section, attribute_name))
+
+    def test_lora_tab_registers_the_controls(self):
+        with gr.Blocks():
+            lora_gui.lora_tab(headless=True, config=KohyaSSGUIConfig())
+        registry_names = [name for name, _ in lora_gui.last_built_field_registry]
+        for attribute_name in self.EXTERNAL_INFERENCE_CONTROL_ATTRIBUTE_NAMES:
+            self.assertIn(attribute_name, registry_names)
+
+    def test_tabs_sharing_the_accordion_do_not_render_the_controls(self):
+        for tab_module in (dreambooth_gui, finetune_gui, textual_inversion_gui):
+            module_source = inspect.getsource(tab_module)
+            for attribute_name in self.EXTERNAL_INFERENCE_CONTROL_ATTRIBUTE_NAMES:
+                self.assertNotIn(attribute_name, module_source)
 
 
 class TestLoraGuiFieldRegistry(unittest.TestCase):
