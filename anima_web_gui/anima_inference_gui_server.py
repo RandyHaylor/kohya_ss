@@ -526,10 +526,16 @@ INDEX_HTML = """<!doctype html>
         <div class="miniField"><label>Rescale mode</label><select id="pagRescaleMode" title="Which statistic the rescale normalizes against: 'full' = the CFG result, 'partial' = the conditional prediction."><option value="full">full</option><option value="partial">partial</option></select></div>
       </div>
       <fieldset class="pagAdvancedGroup" style="margin-top:6px;">
-        <legend><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="flowMatchedPagEnabled" style="width:auto; margin:0;" checked> FlowMatched PAG (scale PAG across the denoise)</label></legend>
+        <legend><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="flowMatchedPagEnabled" style="width:auto; margin:0;" checked> Flow-Matched PAG (scale PAG along the sigma schedule)</label></legend>
         <div class="fourCol">
-          <div class="miniField"><label>Strength</label><input id="flowMatchedPagStrength" type="text" value="1.0" data-number-step="0.1" title="Multiplier on the FlowMatched PAG scalar: 1.0 = scalar as-is, 0.5 = half influence, 2.0 = double. Project heuristic (no published reference)."></div>
-          <div class="miniField"><label>Curve exponent</label><input id="flowMatchedPagCurveExponent" type="text" value="1.0" data-number-step="0.1" title="Shapes the scalar as (sigma/sigma_max)**exponent: 1.0 = linear, <1 keeps PAG stronger later, >1 concentrates it at high noise."></div>
+          <div class="miniField"><label>PAG Strength Offset</label><input id="pagStrengthOffset" type="text" value="1.0" data-number-step="0.1" title="Makeup gain added to the base PAG scale before the sigma scaling (like a compressor's makeup gain). Additive to PAG scale."></div>
+          <div class="miniField"><label>Flow-Matched Strength</label><input id="flowMatchedPagStrength" type="text" value="0.8" data-number-step="0.1" title="How strongly the sigma schedule suppresses PAG toward the low-noise end: 0 = flat (plain PAG), 1 = full fade toward the offset floor at the end. Suggested range 0.5-1.3 (default 0.8)."></div>
+        </div>
+      </fieldset>
+      <fieldset class="pagAdvancedGroup" style="margin-top:6px;">
+        <legend><label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="erSdeSolverPagEnabled" style="width:auto; margin:0;" checked> ER-SDE Solver PAG (react to solver disagreement)</label></legend>
+        <div class="fourCol">
+          <div class="miniField"><label>Solver PAG Strength</label><input id="erSdeSolverPagStrength" type="text" value="20.0" data-number-step="1" title="Multiplier on the ER-SDE solver-vs-Euler disagreement signal (1-step lag): effective *= (1 + strength * disagreement). The signal is small, so useful magnitudes are large; suggested range 10-80 (default 20). >0 amplifies PAG where the solver corrects hard, <0 damps. Only affects the er_sde sampler."></div>
         </div>
       </fieldset>
     </fieldset>
@@ -894,7 +900,9 @@ function buildRequest() {
     pag_rescale_mode: document.getElementById('pagRescaleMode').value,
     flow_matched_pag_enabled: document.getElementById('flowMatchedPagEnabled').checked,
     flow_matched_pag_strength: document.getElementById('flowMatchedPagStrength').value,
-    flow_matched_pag_curve_exponent: document.getElementById('flowMatchedPagCurveExponent').value
+    pag_strength_offset: document.getElementById('pagStrengthOffset').value,
+    er_sde_solver_pag_enabled: document.getElementById('erSdeSolverPagEnabled').checked,
+    er_sde_solver_pag_strength: document.getElementById('erSdeSolverPagStrength').value
   };
 }
 
@@ -1004,7 +1012,7 @@ function setFieldValueIfPresent(elementId, value) {
 var PAG_FORM_FIELD_DEFAULTS = {
   scale: '4.0', block_indices: '18', perturbation_strength: '0.75', head_indices: '',
   start_percent: '0.0', end_percent: '0.7', rescale: '0.2', rescale_mode: 'full',
-  flow_matched_strength: '1.0', flow_matched_curve_exponent: '1.0'
+  flow_matched_strength: '0.8', strength_offset: '1.0', er_sde_solver_strength: '20.0'
 };
 
 // Recommended PAG setting combinations for the preset dropdown. Only "Repo Default" is verified (the
@@ -1059,10 +1067,12 @@ function applyPagSettingsToForm(settings) {
     setFieldValueIfPresent('pagEndPercent', pag.end_percent);
     setFieldValueIfPresent('pagRescale', pag.rescale);
     setFieldValueIfPresent('pagRescaleMode', pag.rescale_mode);
-    // FlowMatched PAG (absent on sidecars predating it): default to off / neutral.
+    // Flow-Matched / ER-SDE Solver PAG (absent on older sidecars): default to off / neutral.
     document.getElementById('flowMatchedPagEnabled').checked = (pag.flow_matched_enabled === true);
     document.getElementById('flowMatchedPagStrength').value = (pag.flow_matched_strength == null) ? PAG_FORM_FIELD_DEFAULTS.flow_matched_strength : pag.flow_matched_strength;
-    document.getElementById('flowMatchedPagCurveExponent').value = (pag.flow_matched_curve_exponent == null) ? PAG_FORM_FIELD_DEFAULTS.flow_matched_curve_exponent : pag.flow_matched_curve_exponent;
+    document.getElementById('pagStrengthOffset').value = (pag.strength_offset == null) ? PAG_FORM_FIELD_DEFAULTS.strength_offset : pag.strength_offset;
+    document.getElementById('erSdeSolverPagEnabled').checked = (pag.er_sde_solver_enabled === true);
+    document.getElementById('erSdeSolverPagStrength').value = (pag.er_sde_solver_strength == null) ? PAG_FORM_FIELD_DEFAULTS.er_sde_solver_strength : pag.er_sde_solver_strength;
   } else {
     // Image predates PAG: load PAG defaults but leave the box unchecked (its PAG state is unknown).
     document.getElementById('pagEnabled').checked = false;
@@ -1076,7 +1086,9 @@ function applyPagSettingsToForm(settings) {
     document.getElementById('pagRescaleMode').value = PAG_FORM_FIELD_DEFAULTS.rescale_mode;
     document.getElementById('flowMatchedPagEnabled').checked = false;
     document.getElementById('flowMatchedPagStrength').value = PAG_FORM_FIELD_DEFAULTS.flow_matched_strength;
-    document.getElementById('flowMatchedPagCurveExponent').value = PAG_FORM_FIELD_DEFAULTS.flow_matched_curve_exponent;
+    document.getElementById('pagStrengthOffset').value = PAG_FORM_FIELD_DEFAULTS.strength_offset;
+    document.getElementById('erSdeSolverPagEnabled').checked = false;
+    document.getElementById('erSdeSolverPagStrength').value = PAG_FORM_FIELD_DEFAULTS.er_sde_solver_strength;
   }
 }
 

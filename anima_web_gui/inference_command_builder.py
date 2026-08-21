@@ -238,11 +238,18 @@ def build_inference_command(generation_request: Dict[str, Any]) -> List[str]:
             command_argv += ["--flow_matched_pag"]
             command_argv += [
                 "--flow_matched_pag_strength",
-                str(coerce_to_float_with_default(generation_request.get("flow_matched_pag_strength"), 1.0)),
+                str(coerce_to_float_with_default(generation_request.get("flow_matched_pag_strength"), 0.8)),
             ]
             command_argv += [
-                "--flow_matched_pag_curve_exponent",
-                str(coerce_to_float_with_default(generation_request.get("flow_matched_pag_curve_exponent"), 1.0)),
+                "--pag_strength_offset",
+                str(coerce_to_float_with_default(generation_request.get("pag_strength_offset"), 1.0)),
+            ]
+
+        if generation_request.get("er_sde_solver_pag_enabled"):
+            command_argv += ["--er_sde_solver_pag"]
+            command_argv += [
+                "--er_sde_solver_pag_strength",
+                str(coerce_to_float_with_default(generation_request.get("er_sde_solver_pag_strength"), 20.0)),
             ]
 
     command_argv += ["--save_path", save_path, "--output_type", "images"]

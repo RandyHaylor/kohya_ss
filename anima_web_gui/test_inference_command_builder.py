@@ -347,12 +347,26 @@ def test_flow_matched_pag_flags_emitted_when_enabled():
             "pag_enabled": True,
             "flow_matched_pag_enabled": True,
             "flow_matched_pag_strength": "0.5",
-            "flow_matched_pag_curve_exponent": "2.0",
+            "pag_strength_offset": "2.0",
         }
     )
     assert "--flow_matched_pag" in argv
     assert argv[argv.index("--flow_matched_pag_strength") + 1] == "0.5"
-    assert argv[argv.index("--flow_matched_pag_curve_exponent") + 1] == "2.0"
+    assert argv[argv.index("--pag_strength_offset") + 1] == "2.0"
+
+
+def test_er_sde_solver_pag_flags_emitted_when_enabled():
+    argv = build_inference_command(
+        {
+            "dit_path": "/m/dit.safetensors",
+            "positive_prompt": "p",
+            "pag_enabled": True,
+            "er_sde_solver_pag_enabled": True,
+            "er_sde_solver_pag_strength": "1.5",
+        }
+    )
+    assert "--er_sde_solver_pag" in argv
+    assert argv[argv.index("--er_sde_solver_pag_strength") + 1] == "1.5"
 
 
 def test_flow_matched_pag_flags_absent_when_pag_disabled():
@@ -363,9 +377,11 @@ def test_flow_matched_pag_flags_absent_when_pag_disabled():
             "positive_prompt": "p",
             "pag_enabled": False,
             "flow_matched_pag_enabled": True,
+            "er_sde_solver_pag_enabled": True,
         }
     )
     assert "--flow_matched_pag" not in argv
+    assert "--er_sde_solver_pag" not in argv
 
 
 def test_flow_matched_pag_flags_absent_when_disabled():
